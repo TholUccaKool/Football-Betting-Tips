@@ -1,0 +1,20 @@
+leagues:
+  - E0    # EPL
+  - SP1   # La Liga
+  - I1    # Serie A
+  - D1    # Bundesliga
+  - F1    # Ligue 1
+
+seasons:
+  start: 2018
+  end: 2026
+
+data:
+  raw_dir: data/raw
+  processed_dir: data/processed
+  external_dir: data/external
+
+elo:
+  k_factor: 20
+  home_advantage: 100
+  initial_rating: 1500
