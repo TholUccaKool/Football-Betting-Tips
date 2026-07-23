@@ -3,6 +3,8 @@
 import numpy as np
 import pandas as pd
 
+MIN_TRAIN_MATCHES = 200  # Exclude splits with fewer training matches from aggregate metrics
+
 
 def brier_score(y_true: np.ndarray, y_proba: np.ndarray) -> float:
     """Multi-class Brier score.
@@ -75,3 +77,25 @@ def walk_forward_splits(
         current = current + pd.DateOffset(months=test_months)
 
     return splits
+
+
+def market_implied_probabilities(
+    df: pd.DataFrame,
+    home_odds_col: str = "home_odds",
+    draw_odds_col: str = "draw_odds",
+    away_odds_col: str = "away_odds",
+) -> tuple[np.ndarray, np.ndarray]:
+    """Convert bookmaker odds to devigged probabilities via normalisation.
+
+    Returns:
+        (probs, mask) where probs is (n_valid, 3) and mask is a boolean array
+        indicating which rows had complete odds.
+    """
+    has_odds = df[[home_odds_col, draw_odds_col, away_odds_col]].notna().all(axis=1)
+    valid = df[has_odds]
+    raw_h = 1.0 / valid[home_odds_col].values
+    raw_d = 1.0 / valid[draw_odds_col].values
+    raw_a = 1.0 / valid[away_odds_col].values
+    total = raw_h + raw_d + raw_a
+    probs = np.column_stack([raw_h / total, raw_d / total, raw_a / total])
+    return probs, has_odds.values
