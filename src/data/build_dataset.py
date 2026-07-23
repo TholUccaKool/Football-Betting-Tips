@@ -36,6 +36,47 @@ def _load_raw_parquets(subdir: str) -> pd.DataFrame:
     return pd.concat(frames, ignore_index=True)
 
 
+# Understat name → football-data.co.uk name (canonical for matches.parquet)
+_UNDERSTAT_TO_FD = {
+    "AC Milan": "Milan",
+    "Arminia Bielefeld": "Bielefeld",
+    "Athletic Club": "Ath Bilbao",
+    "Atletico Madrid": "Ath Madrid",
+    "Bayer Leverkusen": "Leverkusen",
+    "Borussia Dortmund": "Dortmund",
+    "Borussia M.Gladbach": "M'gladbach",
+    "Celta Vigo": "Celta",
+    "Clermont Foot": "Clermont",
+    "FC Cologne": "FC Koln",
+    "Eintracht Frankfurt": "Ein Frankfurt",
+    "Espanyol": "Espanol",
+    "Fortuna Duesseldorf": "Fortuna Dusseldorf",
+    "Hamburger SV": "Hamburg",
+    "Hannover 96": "Hannover",
+    "Hertha Berlin": "Hertha",
+    "Mainz 05": "Mainz",
+    "Manchester City": "Man City",
+    "Manchester United": "Man United",
+    "Newcastle United": "Newcastle",
+    "Nottingham Forest": "Nott'm Forest",
+    "Nuernberg": "Nurnberg",
+    "Paris Saint Germain": "Paris SG",
+    "Parma Calcio 1913": "Parma",
+    "RasenBallsport Leipzig": "RB Leipzig",
+    "Rayo Vallecano": "Vallecano",
+    "Real Betis": "Betis",
+    "Real Oviedo": "Oviedo",
+    "Real Sociedad": "Sociedad",
+    "Real Valladolid": "Valladolid",
+    "Saint-Etienne": "St Etienne",
+    "SD Huesca": "Huesca",
+    "SPAL 2013": "Spal",
+    "VfB Stuttgart": "Stuttgart",
+    "West Bromwich Albion": "West Brom",
+    "Wolverhampton Wanderers": "Wolves",
+}
+
+
 def _normalize_team_name(name: str) -> str:
     """Basic team name normalization for matching across sources."""
     return (
@@ -47,6 +88,11 @@ def _normalize_team_name(name: str) -> str:
         .replace(".", "")
         .replace("'", "")
     )
+
+
+def _map_understat_team(name: str) -> str:
+    """Map an Understat team name to its football-data.co.uk equivalent."""
+    return _UNDERSTAT_TO_FD.get(name, name)
 
 
 def build(cfg: dict | None = None) -> pd.DataFrame:
@@ -113,6 +159,20 @@ def build(cfg: dict | None = None) -> pd.DataFrame:
         else:
             matches[target] = float("nan")
 
+    # Pinnacle opening odds (PSH/PSD/PSA)
+    for col_raw, target in [("psh", "pin_open_home"), ("psd", "pin_open_draw"), ("psa", "pin_open_away")]:
+        if col_raw in mh.columns:
+            matches[target] = pd.to_numeric(mh[col_raw], errors="coerce")
+        else:
+            matches[target] = float("nan")
+
+    # Pinnacle closing odds (PSCH/PSCD/PSCA)
+    for col_raw, target in [("psch", "pin_close_home"), ("pscd", "pin_close_draw"), ("psca", "pin_close_away")]:
+        if col_raw in mh.columns:
+            matches[target] = pd.to_numeric(mh[col_raw], errors="coerce")
+        else:
+            matches[target] = float("nan")
+
     # Result column
     matches["result"] = "D"
     matches.loc[matches["home_goals"] > matches["away_goals"], "result"] = "H"
@@ -135,8 +195,8 @@ def build(cfg: dict | None = None) -> pd.DataFrame:
         if all(c is not None for c in [us_date, us_home, us_away, us_hxg, us_axg]):
             us_clean = pd.DataFrame({
                 "us_date": pd.to_datetime(us[us_date]).dt.date,
-                "us_home_norm": us[us_home].apply(_normalize_team_name),
-                "us_away_norm": us[us_away].apply(_normalize_team_name),
+                "us_home_norm": us[us_home].apply(_map_understat_team).apply(_normalize_team_name),
+                "us_away_norm": us[us_away].apply(_map_understat_team).apply(_normalize_team_name),
                 "home_xg": pd.to_numeric(us[us_hxg], errors="coerce"),
                 "away_xg": pd.to_numeric(us[us_axg], errors="coerce"),
             })
@@ -163,11 +223,18 @@ def build(cfg: dict | None = None) -> pd.DataFrame:
     output_cols = [
         "date", "league", "home_team", "away_team",
         "home_goals", "away_goals", "home_xg", "away_xg",
-        "home_odds", "draw_odds", "away_odds", "result",
+        "home_odds", "draw_odds", "away_odds",
+        "pin_open_home", "pin_open_draw", "pin_open_away",
+        "pin_close_home", "pin_close_draw", "pin_close_away",
+        "result",
     ]
     matches = matches[[c for c in output_cols if c in matches.columns]]
     matches = matches.dropna(subset=["home_goals", "away_goals"])
     matches = matches.sort_values("date").reset_index(drop=True)
+
+    # Report xG coverage
+    xg_present = matches["home_xg"].notna().sum()
+    logger.info(f"xG coverage: {xg_present}/{len(matches)} matches ({100*xg_present/len(matches):.1f}%)")
 
     # Save
     out_path = get_processed_dir() / "matches.parquet"

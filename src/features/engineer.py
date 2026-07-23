@@ -124,8 +124,13 @@ def build_features(matches: pd.DataFrame | None = None, cfg: dict | None = None)
         "is_home",
     ]
 
-    return matches[["date", "home_team", "away_team", "result", "target"] + feature_cols +
-                   ["home_odds", "draw_odds", "away_odds"]]
+    meta_cols = ["date", "league", "home_team", "away_team",
+                 "home_goals", "away_goals", "result", "target"]
+    odds_cols = ["home_odds", "draw_odds", "away_odds"]
+    pin_cols = [c for c in ["pin_open_home", "pin_open_draw", "pin_open_away",
+                            "pin_close_home", "pin_close_draw", "pin_close_away"]
+                if c in matches.columns]
+    return matches[meta_cols + feature_cols + odds_cols + pin_cols]
 
 
 if __name__ == "__main__":
