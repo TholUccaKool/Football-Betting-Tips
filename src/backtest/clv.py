@@ -1,67 +1,75 @@
-"""Closing Line Value (CLV) calculator for betting analysis."""
+"""Closing Line Value (CLV) analysis using Pinnacle opening/closing odds."""
 
 import numpy as np
 import pandas as pd
 
-
-def implied_probability(odds: float) -> float:
-    """Convert decimal odds to implied probability."""
-    if odds <= 0:
-        return 0.0
-    return 1.0 / odds
+EDGE_THRESHOLD = 0.03  # Minimum model edge over opening implied prob to flag a bet
 
 
-def clv_single(model_prob: float, closing_odds: float) -> float:
-    """Compute CLV% for a single prediction.
-
-    CLV% = (model_prob - implied_prob) / implied_prob * 100
-
-    Positive CLV means the model found value vs the closing line.
-    """
-    impl_prob = implied_probability(closing_odds)
-    if impl_prob <= 0:
-        return 0.0
-    return (model_prob - impl_prob) / impl_prob * 100.0
-
-
-def aggregate_clv(
-    model_probs: np.ndarray,
-    closing_odds: np.ndarray,
-    results: np.ndarray,
-    threshold: float = 0.0,
-) -> dict:
-    """Compute aggregate CLV stats across a backtest period.
+def devig_odds(home_odds: np.ndarray, draw_odds: np.ndarray, away_odds: np.ndarray) -> np.ndarray:
+    """Convert decimal odds to devigged fair probabilities via normalisation.
 
     Args:
-        model_probs: (n, 3) array of [p_home, p_draw, p_away] model probabilities.
-        closing_odds: (n, 3) array of [home_odds, draw_odds, away_odds] closing odds.
-        results: 1-D array of actual outcomes (0=H, 1=D, 2=A).
-        threshold: Minimum CLV% to count as a "value bet".
+        home_odds, draw_odds, away_odds: 1-D arrays of decimal odds.
 
     Returns:
-        Dict with avg_clv, n_value_bets, value_bet_hit_rate, etc.
+        (n, 3) array of [p_home, p_draw, p_away] fair probabilities.
     """
-    clvs = []
-    value_bets = []
-    value_hits = []
+    raw_h = 1.0 / home_odds
+    raw_d = 1.0 / draw_odds
+    raw_a = 1.0 / away_odds
+    total = raw_h + raw_d + raw_a
+    return np.column_stack([raw_h / total, raw_d / total, raw_a / total])
 
-    for i in range(len(results)):
-        for outcome in range(3):
-            mp = model_probs[i, outcome]
-            co = closing_odds[i, outcome]
-            if np.isnan(co) or co <= 1.0:
-                continue
-            c = clv_single(mp, co)
-            clvs.append(c)
 
-            if c > threshold:
-                value_bets.append(c)
-                value_hits.append(1 if int(results[i]) == outcome else 0)
+def compute_clv(
+    model_probs: np.ndarray,
+    opening_odds: np.ndarray,
+    closing_odds: np.ndarray,
+    edge_threshold: float = EDGE_THRESHOLD,
+) -> pd.DataFrame:
+    """Compute CLV for each outcome of each match.
 
-    return {
-        "avg_clv_pct": np.mean(clvs) if clvs else 0.0,
-        "n_predictions": len(clvs),
-        "n_value_bets": len(value_bets),
-        "avg_value_bet_clv_pct": np.mean(value_bets) if value_bets else 0.0,
-        "value_bet_hit_rate": np.mean(value_hits) if value_hits else 0.0,
-    }
+    For each match and each outcome (H/D/A):
+    - Devig opening odds to get opening implied prob.
+    - edge = model_prob - opening_implied_prob
+    - If edge > threshold, flag as a bet at the opening price.
+    - CLV% = (opening_odds_taken / closing_fair_odds - 1) * 100
+      where closing_fair_odds = 1 / devigged_closing_prob.
+
+    Args:
+        model_probs: (n, 3) array of model probabilities [H, D, A].
+        opening_odds: (n, 3) array of [home, draw, away] opening decimal odds.
+        closing_odds: (n, 3) array of [home, draw, away] closing decimal odds.
+        edge_threshold: Minimum edge to flag a bet.
+
+    Returns:
+        DataFrame with columns: match_idx, outcome, model_prob, opening_impl,
+        closing_impl, edge, is_bet, opening_odds, closing_fair_odds, clv_pct.
+    """
+    open_impl = devig_odds(opening_odds[:, 0], opening_odds[:, 1], opening_odds[:, 2])
+    close_impl = devig_odds(closing_odds[:, 0], closing_odds[:, 1], closing_odds[:, 2])
+
+    records = []
+    outcome_names = ["H", "D", "A"]
+    for oc in range(3):
+        edge = model_probs[:, oc] - open_impl[:, oc]
+        is_bet = edge > edge_threshold
+        closing_fair_odds = 1.0 / close_impl[:, oc]
+        clv_pct = (opening_odds[:, oc] / closing_fair_odds - 1.0) * 100.0
+
+        for i in range(len(model_probs)):
+            records.append({
+                "match_idx": i,
+                "outcome": outcome_names[oc],
+                "model_prob": model_probs[i, oc],
+                "opening_impl": open_impl[i, oc],
+                "closing_impl": close_impl[i, oc],
+                "edge": edge[i],
+                "is_bet": is_bet[i],
+                "opening_odds": opening_odds[i, oc],
+                "closing_fair_odds": closing_fair_odds[i],
+                "clv_pct": clv_pct[i],
+            })
+
+    return pd.DataFrame(records)
