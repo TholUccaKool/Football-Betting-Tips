@@ -1,52 +1,35 @@
-"""Elo-based baseline probability model."""
+"""Elo-based baseline probability model.
+
+Uses multinomial logistic regression on elo_diff to convert raw Elo rating
+differences into calibrated (home, draw, away) probabilities.  The logistic
+regression must be fit on training data per walk-forward split to avoid
+leakage.
+"""
 
 import numpy as np
+from sklearn.linear_model import LogisticRegression
 
 
-def elo_probabilities(
-    home_elo: float,
-    away_elo: float,
-    home_advantage: float = 100,
-    draw_width: float = 0.1,
-) -> tuple[float, float, float]:
-    """Convert Elo ratings to home/draw/away probabilities.
-
-    Uses a logistic model with a draw margin derived from draw_width.
+def fit_elo_calibrator(train_df) -> LogisticRegression:
+    """Fit a multinomial logistic regression on elo_diff from training data.
 
     Args:
-        home_elo: Home team Elo rating.
-        away_elo: Away team Elo rating.
-        home_advantage: Elo points added for home advantage.
-        draw_width: Controls the probability mass allocated to draws.
+        train_df: DataFrame with 'elo_diff' and 'target' (0=H, 1=D, 2=A).
 
     Returns:
-        (p_home, p_draw, p_away) probabilities summing to 1.
+        Fitted LogisticRegression model.
     """
-    diff = (home_elo + home_advantage - away_elo) / 400.0
-    p_home_win_or_draw = 1.0 / (1.0 + 10.0 ** (-(diff + draw_width)))
-    p_away_win_or_draw = 1.0 / (1.0 + 10.0 ** (diff - draw_width))
-
-    p_draw = max(0, p_home_win_or_draw + p_away_win_or_draw - 1.0)
-    p_home = max(0, p_home_win_or_draw - p_draw)
-    p_away = max(0, p_away_win_or_draw - p_draw)
-
-    # Normalize
-    total = p_home + p_draw + p_away
-    if total > 0:
-        p_home /= total
-        p_draw /= total
-        p_away /= total
-
-    return p_home, p_draw, p_away
+    X = train_df[["elo_diff"]].values
+    y = train_df["target"].values.astype(int)
+    model = LogisticRegression(solver="lbfgs", max_iter=1000)
+    model.fit(X, y)
+    return model
 
 
-def predict_from_df(df, home_advantage: float = 100) -> np.ndarray:
-    """Predict probabilities for a DataFrame with home_elo and away_elo columns.
+def predict_calibrated(model: LogisticRegression, test_df) -> np.ndarray:
+    """Predict (p_home, p_draw, p_away) using a fitted calibrator.
 
-    Returns array of shape (n, 3) with columns [p_home, p_draw, p_away].
+    Returns array of shape (n, 3).
     """
-    probs = [
-        elo_probabilities(row["home_elo"], row["away_elo"], home_advantage)
-        for _, row in df.iterrows()
-    ]
-    return np.array(probs)
+    X = test_df[["elo_diff"]].values
+    return model.predict_proba(X)
