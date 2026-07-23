@@ -1,97 +1,171 @@
-"""Simplified Dixon-Coles Poisson model for football match prediction."""
+"""Dixon-Coles (1997) Poisson model for football match prediction.
+
+Simplification vs. the original paper: walk-forward evaluation window
+(~12 months) handles recency at the split level. Exponential time-decay
+weighting within each window is controlled by DC_TIME_DECAY_XI.
+"""
 
 import numpy as np
 from scipy.optimize import minimize
+from scipy.special import gammaln
 from scipy.stats import poisson
 
-
-def _tau(x: int, y: int, lambda_: float, mu: float, rho: float) -> float:
-    """Dixon-Coles low-scoring correction factor."""
-    if x == 0 and y == 0:
-        return 1.0 - lambda_ * mu * rho
-    elif x == 0 and y == 1:
-        return 1.0 + lambda_ * rho
-    elif x == 1 and y == 0:
-        return 1.0 + mu * rho
-    elif x == 1 and y == 1:
-        return 1.0 - rho
-    return 1.0
+# Half-life of ~180 days: xi = ln(2) / 180 ≈ 0.00385
+DC_TIME_DECAY_XI = np.log(2) / 180.0
 
 
 class DixonColesModel:
-    """Dixon-Coles model with per-team attack/defense + home advantage + rho correction."""
+    """Dixon-Coles model with per-team attack/defense + home advantage + rho correction.
 
-    def __init__(self, max_goals: int = 8):
+    Parameters are fit via MLE with analytic gradient, fully vectorized.
+    Optional exponential time-decay weighting on training matches.
+    """
+
+    def __init__(self, max_goals: int = 7):
         self.max_goals = max_goals
         self.teams: list[str] = []
         self.params: dict[str, float] = {}
+        self._n_teams = 0
 
-    def _build_param_vector(self, teams: list[str]) -> np.ndarray:
-        """Initial parameter vector: [attack_1..n, defense_1..n, home_adv, rho]."""
-        n = len(teams)
-        # attack params ~0, defense params ~0, home_adv ~0.25, rho ~0
-        return np.concatenate([np.zeros(n), np.zeros(n), [0.25, -0.05]])
+    def fit(self, home_teams, away_teams, home_goals, away_goals,
+            match_dates=None, reference_date=None,
+            xi: float = DC_TIME_DECAY_XI) -> "DixonColesModel":
+        """Fit model parameters via MLE.
 
-    def _unpack(self, params: np.ndarray, teams: list[str]) -> dict[str, float]:
-        """Unpack parameter vector into named dict."""
-        n = len(teams)
-        d = {}
-        for i, t in enumerate(teams):
-            d[f"attack_{t}"] = params[i]
-            d[f"defense_{t}"] = params[n + i]
-        d["home_adv"] = params[2 * n]
-        d["rho"] = params[2 * n + 1]
-        return d
-
-    def _neg_log_likelihood(self, params: np.ndarray, home_teams, away_teams,
-                            home_goals, away_goals, teams: list[str]) -> float:
-        """Negative log-likelihood for the Dixon-Coles model."""
-        p = self._unpack(params, teams)
-        n = len(teams)
-
-        # Constraint: sum of attack params = n (via softmax-like normalization)
-        log_lik = 0.0
-        for ht, at, hg, ag in zip(home_teams, away_teams, home_goals, away_goals):
-            lambda_ = np.exp(p[f"attack_{ht}"] + p[f"defense_{at}"] + p["home_adv"])
-            mu = np.exp(p[f"attack_{at}"] + p[f"defense_{ht}"])
-
-            hg, ag = int(hg), int(ag)
-            tau = _tau(hg, ag, lambda_, mu, p["rho"])
-
-            if tau <= 0 or lambda_ <= 0 or mu <= 0:
-                return 1e10
-
-            log_lik += (
-                np.log(tau + 1e-10)
-                + poisson.logpmf(hg, lambda_)
-                + poisson.logpmf(ag, mu)
-            )
-
-        # Regularization: sum of attack params should be near 0
-        attack_sum = sum(params[i] for i in range(n))
-        log_lik -= 0.01 * attack_sum ** 2
-
-        return -log_lik
-
-    def fit(self, home_teams, away_teams, home_goals, away_goals) -> "DixonColesModel":
-        """Fit model parameters via MLE."""
+        Args:
+            home_teams, away_teams: arrays of team name strings.
+            home_goals, away_goals: arrays of integer goal counts.
+            match_dates: optional array of datetime-like match dates for
+                time-decay weighting. If None, all matches weighted equally.
+            reference_date: the date from which to measure recency (typically
+                the first date of the test window). Required if match_dates
+                is provided.
+            xi: exponential decay rate. Default uses DC_TIME_DECAY_XI
+                (~180-day half-life).
+        """
         self.teams = sorted(set(list(home_teams) + list(away_teams)))
-        x0 = self._build_param_vector(self.teams)
+        self._n_teams = n = len(self.teams)
+        team_to_idx = {t: i for i, t in enumerate(self.teams)}
+
+        hi = np.array([team_to_idx[t] for t in home_teams], dtype=int)
+        ai = np.array([team_to_idx[t] for t in away_teams], dtype=int)
+        hg = np.asarray(home_goals, dtype=int)
+        ag = np.asarray(away_goals, dtype=int)
+
+        # Time-decay weights
+        if match_dates is not None and reference_date is not None:
+            dates = np.asarray(match_dates, dtype="datetime64[D]")
+            ref = np.datetime64(reference_date, "D")
+            days_before = (ref - dates).astype(float)
+            weights = np.exp(-xi * np.clip(days_before, 0, None))
+        else:
+            weights = np.ones(len(hg))
+
+        x0 = np.zeros(2 * n + 2)
+        x0[2 * n] = 0.25
+        x0[2 * n + 1] = -0.05
+
+        # Precompute constants
+        m00 = (hg == 0) & (ag == 0)
+        m01 = (hg == 0) & (ag == 1)
+        m10 = (hg == 1) & (ag == 0)
+        m11 = (hg == 1) & (ag == 1)
+        hg_f = hg.astype(np.float64)
+        ag_f = ag.astype(np.float64)
+        log_hg_fact = gammaln(hg_f + 1.0)
+        log_ag_fact = gammaln(ag_f + 1.0)
+
+        def neg_ll_and_grad(params):
+            atk = params[:n]
+            dfn = params[n:2*n]
+            home_adv = params[2*n]
+            rho = params[2*n + 1]
+
+            log_lam = atk[hi] + dfn[ai] + home_adv
+            log_mu = atk[ai] + dfn[hi]
+            lam = np.exp(log_lam)
+            mu = np.exp(log_mu)
+
+            ll_pois = (hg_f * log_lam - lam - log_hg_fact
+                       + ag_f * log_mu - mu - log_ag_fact)
+
+            tau = np.ones(len(hg))
+            tau[m00] = 1.0 - lam[m00] * mu[m00] * rho
+            tau[m01] = 1.0 + lam[m01] * rho
+            tau[m10] = 1.0 + mu[m10] * rho
+            tau[m11] = 1.0 - rho
+
+            if np.any(tau <= 0):
+                return 1e10, np.zeros_like(params)
+
+            log_tau = np.log(tau)
+            # Weighted log-likelihood
+            ll = np.sum(weights * (ll_pois + log_tau))
+
+            atk_sum = atk.sum()
+            ll -= 0.01 * atk_sum ** 2
+
+            # --- Gradient (weighted) ---
+            grad = np.zeros_like(params)
+
+            dll_dloglam = hg_f - lam
+            dll_dlogmu = ag_f - mu
+
+            dlogtau_dlam = np.zeros(len(hg))
+            dlogtau_dmu = np.zeros(len(hg))
+            dlogtau_drho = np.zeros(len(hg))
+
+            dlogtau_dlam[m00] = -mu[m00] * rho / tau[m00]
+            dlogtau_dmu[m00] = -lam[m00] * rho / tau[m00]
+            dlogtau_drho[m00] = -lam[m00] * mu[m00] / tau[m00]
+            dlogtau_dlam[m01] = rho / tau[m01]
+            dlogtau_drho[m01] = lam[m01] / tau[m01]
+            dlogtau_dmu[m10] = rho / tau[m10]
+            dlogtau_drho[m10] = mu[m10] / tau[m10]
+            dlogtau_drho[m11] = -1.0 / tau[m11]
+
+            dll_dloglam += dlogtau_dlam * lam
+            dll_dlogmu += dlogtau_dmu * mu
+
+            # Apply weights to per-match gradient contributions
+            w_dll_dloglam = weights * dll_dloglam
+            w_dll_dlogmu = weights * dll_dlogmu
+
+            np.add.at(grad[:n], hi, w_dll_dloglam)
+            np.add.at(grad[n:2*n], ai, w_dll_dloglam)
+            grad[2*n] += w_dll_dloglam.sum()
+
+            np.add.at(grad[:n], ai, w_dll_dlogmu)
+            np.add.at(grad[n:2*n], hi, w_dll_dlogmu)
+
+            grad[2*n + 1] = (weights * dlogtau_drho).sum()
+
+            grad[:n] -= 0.02 * atk_sum
+
+            return -ll, -grad
+
+        bounds = [(-3.0, 3.0)] * (2 * n) + [(-1.0, 2.0), (-1.0, 1.0)]
 
         result = minimize(
-            self._neg_log_likelihood,
+            neg_ll_and_grad,
             x0,
-            args=(home_teams, away_teams, home_goals, away_goals, self.teams),
             method="L-BFGS-B",
-            options={"maxiter": 500, "disp": False},
+            jac=True,
+            bounds=bounds,
+            options={"maxiter": 500},
         )
 
-        self.params = self._unpack(result.x, self.teams)
+        self.params = {}
+        for i, t in enumerate(self.teams):
+            self.params[f"attack_{t}"] = result.x[i]
+            self.params[f"defense_{t}"] = result.x[self._n_teams + i]
+        self.params["home_adv"] = result.x[2 * self._n_teams]
+        self.params["rho"] = result.x[2 * self._n_teams + 1]
         return self
 
     def predict_scoreline_matrix(self, home_team: str, away_team: str) -> np.ndarray:
         """Return (max_goals+1, max_goals+1) matrix of scoreline probabilities."""
-        lambda_ = np.exp(
+        lam = np.exp(
             self.params[f"attack_{home_team}"]
             + self.params[f"defense_{away_team}"]
             + self.params["home_adv"]
@@ -101,23 +175,25 @@ class DixonColesModel:
             + self.params[f"defense_{home_team}"]
         )
         rho = self.params["rho"]
+        mg = self.max_goals + 1
 
-        matrix = np.zeros((self.max_goals + 1, self.max_goals + 1))
-        for i in range(self.max_goals + 1):
-            for j in range(self.max_goals + 1):
-                base = poisson.pmf(i, lambda_) * poisson.pmf(j, mu)
-                tau = _tau(i, j, lambda_, mu, rho)
-                matrix[i, j] = base * tau
+        h_pmf = poisson.pmf(np.arange(mg), lam)
+        a_pmf = poisson.pmf(np.arange(mg), mu)
+        matrix = np.outer(h_pmf, a_pmf)
 
-        # Normalize
+        matrix[0, 0] *= (1.0 - lam * mu * rho)
+        matrix[0, 1] *= (1.0 + lam * rho)
+        matrix[1, 0] *= (1.0 + mu * rho)
+        matrix[1, 1] *= (1.0 - rho)
+
+        np.clip(matrix, 0.0, None, out=matrix)
         matrix /= matrix.sum()
         return matrix
 
     def predict_proba(self, home_team: str, away_team: str) -> tuple[float, float, float]:
         """Return (p_home, p_draw, p_away) from the scoreline matrix."""
         m = self.predict_scoreline_matrix(home_team, away_team)
-        n = m.shape[0]
-        p_home = sum(m[i, j] for i in range(n) for j in range(n) if i > j)
-        p_draw = sum(m[i, i] for i in range(n))
-        p_away = sum(m[i, j] for i in range(n) for j in range(n) if i < j)
-        return p_home, p_draw, p_away
+        p_draw = np.trace(m)
+        p_home = np.tril(m, -1).sum()
+        p_away = np.triu(m, 1).sum()
+        return float(p_home), float(p_draw), float(p_away)
