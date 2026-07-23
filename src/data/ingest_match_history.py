@@ -5,6 +5,10 @@ from pathlib import Path
 
 import soccerdata as sd
 
+from src.data._soccerdata_patch import patch_soccerdata_session  # fix tls_requests 503s
+
+patch_soccerdata_session()
+
 from src.utils.io import load_config, get_raw_dir, season_range
 
 logging.basicConfig(level=logging.INFO)
