@@ -5,6 +5,14 @@ leagues:
   - D1    # Bundesliga
   - F1    # Ligue 1
 
+# Secondary leagues — lower-tier or smaller top-flight markets
+# Added for broader CLV/ensemble testing; no Understat xG coverage
+secondary_leagues:
+  - E1    # Championship (England)
+  - SP2   # Segunda División (Spain)
+  - N1    # Eredivisie (Netherlands)
+  - P1    # Primeira Liga (Portugal)
+
 seasons:
   start: 2018
   end: 2026

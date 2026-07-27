@@ -10,11 +10,17 @@ logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
 LEAGUE_CODE_TO_NAME = {
+    # Core leagues
     "E0": "EPL",
     "SP1": "La Liga",
     "I1": "Serie A",
     "D1": "Bundesliga",
     "F1": "Ligue 1",
+    # Secondary leagues
+    "E1": "Championship",
+    "SP2": "Segunda División",
+    "N1": "Eredivisie",
+    "P1": "Primeira Liga",
 }
 
 
@@ -99,8 +105,13 @@ def build(cfg: dict | None = None) -> pd.DataFrame:
     if cfg is None:
         cfg = load_config()
 
+    # Determine which league codes to include
+    all_league_codes = set(cfg.get("leagues", []) + cfg.get("secondary_leagues", []))
+
     logger.info("Loading raw match history...")
     mh = _load_raw_parquets("match_history")
+    if not mh.empty and "league_code" in mh.columns:
+        mh = mh[mh["league_code"].isin(all_league_codes)]
     logger.info(f"  {len(mh)} match history rows")
 
     logger.info("Loading raw Understat xG data...")
@@ -192,6 +203,10 @@ def build(cfg: dict | None = None) -> pd.DataFrame:
         us_axg = next((c for c in us.columns if "away" in c and "xg" in c), None)
 
         if all(c is not None for c in [us_date, us_home, us_away, us_hxg, us_axg]):
+            # Deduplicate Understat rows (overlapping season files)
+            us = us.drop_duplicates(subset=[us_date, us_home, us_away], keep="first")
+            logger.info(f"  {len(us)} Understat rows after dedup")
+
             us_clean = pd.DataFrame({
                 "us_date": pd.to_datetime(us[us_date]).dt.date,
                 "us_home_norm": us[us_home].apply(_map_understat_team).apply(_normalize_team_name),
@@ -228,7 +243,8 @@ def build(cfg: dict | None = None) -> pd.DataFrame:
         "result",
     ]
     matches = matches[[c for c in output_cols if c in matches.columns]]
-    matches = matches.dropna(subset=["home_goals", "away_goals"])
+    matches = matches.drop_duplicates(subset=["date", "home_team", "away_team"], keep="first")
+    matches = matches.dropna(subset=["home_goals", "away_goals", "league"])
     matches = matches.sort_values("date").reset_index(drop=True)
 
     # Report xG coverage
