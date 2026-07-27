@@ -17,14 +17,17 @@ def _rolling_team_stats(matches: pd.DataFrame, window: int = 5) -> dict[str, pd.
     home.columns = ["date", "team", "goals_for", "goals_against", "xg_for", "xg_against", "result"]
     home["points"] = home["result"].map({"H": 3, "D": 1, "A": 0})
     home["is_home"] = True
+    home["opponent"] = matches["away_team"].values
 
     away = matches[["date", "away_team", "away_goals", "home_goals", "away_xg", "home_xg", "result"]].copy()
     away.columns = ["date", "team", "goals_for", "goals_against", "xg_for", "xg_against", "result"]
     away["points"] = away["result"].map({"H": 0, "D": 1, "A": 3})
     away["is_home"] = False
+    away["opponent"] = matches["home_team"].values
 
     long = pd.concat([home, away]).sort_values("date").reset_index(drop=True)
 
+    # --- Pass 1: standard rolling stats ---
     team_stats = {}
     for team, grp in long.groupby("team"):
         grp = grp.sort_values("date").copy()
@@ -34,6 +37,49 @@ def _rolling_team_stats(matches: pd.DataFrame, window: int = 5) -> dict[str, pd.
         grp["rolling_xg_against"] = grp["xg_against"].shift(1).rolling(window, min_periods=1).mean()
         grp["prev_date"] = grp["date"].shift(1)
         grp["rest_days"] = (grp["date"] - grp["prev_date"]).dt.days
+
+        # xG overperformance: rolling (goals_scored - xG) — finishing quality
+        grp["xg_overperformance"] = (
+            (grp["goals_for"] - grp["xg_for"])
+            .shift(1)
+            .rolling(window, min_periods=1)
+            .mean()
+        )
+
+        team_stats[team] = grp
+
+    # --- Pass 2: opponent-adjusted xG ---
+    # For each match, look up the opponent's rolling_xg_against at that time,
+    # then compute adjusted_xg_for = xg_for * (league_avg / opponent_xg_against).
+    # We use opponent rolling_xg_against rather than Elo because it's already
+    # available from pass 1 and directly measures defensive quality in xG terms.
+    # Build a lookup: (team, date, is_home) -> rolling_xg_against
+    opp_xga_lookup = {}
+    for team, grp in team_stats.items():
+        for _, row in grp.iterrows():
+            opp_xga_lookup[(team, row["date"], row["is_home"])] = row["rolling_xg_against"]
+
+    # League-average xG against (across all matches, for normalisation)
+    all_xga = long["xg_against"].dropna()
+    league_avg_xga = all_xga.mean() if len(all_xga) > 0 else 1.0
+
+    for team, grp in team_stats.items():
+        adj_xg_values = []
+        for _, row in grp.iterrows():
+            opp = row["opponent"]
+            opp_is_home = not row["is_home"]
+            opp_xga = opp_xga_lookup.get((opp, row["date"], opp_is_home), np.nan)
+            xg_for = row["xg_for"]
+            if pd.notna(opp_xga) and opp_xga > 0 and pd.notna(xg_for):
+                # Scale up if opponent is stingy (low xga), down if leaky (high xga)
+                adj_xg_values.append(xg_for * (league_avg_xga / opp_xga))
+            else:
+                adj_xg_values.append(np.nan)
+        grp["_adj_xg_for"] = adj_xg_values
+        grp["opp_adjusted_xg_for"] = (
+            grp["_adj_xg_for"].shift(1).rolling(window, min_periods=1).mean()
+        )
+        grp.drop(columns=["_adj_xg_for"], inplace=True)
         team_stats[team] = grp
 
     return team_stats
@@ -110,6 +156,10 @@ def build_features(matches: pd.DataFrame | None = None, cfg: dict | None = None)
     matches["away_rolling_xg_against"] = away_roll_df.get("rolling_xg_against", np.nan)
     matches["home_rest_days"] = home_roll_df.get("rest_days", np.nan)
     matches["away_rest_days"] = away_roll_df.get("rest_days", np.nan)
+    matches["home_xg_overperformance"] = home_roll_df.get("xg_overperformance", np.nan)
+    matches["away_xg_overperformance"] = away_roll_df.get("xg_overperformance", np.nan)
+    matches["home_opp_adjusted_xg_for"] = home_roll_df.get("opp_adjusted_xg_for", np.nan)
+    matches["away_opp_adjusted_xg_for"] = away_roll_df.get("opp_adjusted_xg_for", np.nan)
     matches["is_home"] = 1  # Always 1 from home team perspective
 
     # Target encoding
@@ -122,6 +172,8 @@ def build_features(matches: pd.DataFrame | None = None, cfg: dict | None = None)
         "away_rolling_xg_for", "away_rolling_xg_against",
         "home_rest_days", "away_rest_days",
         "is_home",
+        "home_xg_overperformance", "away_xg_overperformance",
+        "home_opp_adjusted_xg_for", "away_opp_adjusted_xg_for",
     ]
 
     meta_cols = ["date", "league", "home_team", "away_team",

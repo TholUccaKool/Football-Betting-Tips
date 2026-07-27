@@ -23,6 +23,16 @@ FEATURES_MARKET_BLEND = FEATURES_OWN_SIGNAL + [
     "home_odds", "draw_odds", "away_odds",
 ]
 
+# V2: own signal + richer xG features
+_XG_V2_FEATURES = [
+    "home_xg_overperformance", "away_xg_overperformance",
+    "home_opp_adjusted_xg_for", "away_opp_adjusted_xg_for",
+]
+
+FEATURES_OWN_SIGNAL_V2 = FEATURES_OWN_SIGNAL + _XG_V2_FEATURES
+
+FEATURES_MARKET_BLEND_V2 = FEATURES_MARKET_BLEND + _XG_V2_FEATURES
+
 # --- Regularization defaults ---
 XGB_MAX_DEPTH = 3
 XGB_LEARNING_RATE = 0.05
