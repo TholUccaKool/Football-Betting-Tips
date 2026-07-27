@@ -4,13 +4,6 @@ import numpy as np
 import pandas as pd
 import xgboost as xgb
 
-# TODO: Re-add these once Understat xG data is persisted into matches.parquet.
-# They are currently all-NaN and contribute nothing to the model.
-_XG_FEATURES = [
-    "home_rolling_xg_for", "home_rolling_xg_against",
-    "away_rolling_xg_for", "away_rolling_xg_against",
-]
-
 FEATURES_OWN_SIGNAL = [
     "elo_diff",
     "home_form_ppg", "away_form_ppg",

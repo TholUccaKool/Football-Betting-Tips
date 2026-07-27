@@ -1,7 +1,6 @@
 """Merge match history + Understat xG into a single clean parquet dataset."""
 
 import logging
-from pathlib import Path
 
 import pandas as pd
 

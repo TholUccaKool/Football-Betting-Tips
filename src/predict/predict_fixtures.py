@@ -23,7 +23,8 @@ from src.features.engineer import _rolling_team_stats
 from src.models.elo_baseline import fit_elo_calibrator
 from src.models.dixon_coles import DixonColesModel
 from src.models.gbm_classifier import GBMClassifier, FEATURES_MARKET_BLEND
-from src.utils.io import load_config, get_processed_dir
+from src.models.market_derivations import over_under, btts, correct_score_top_n, asian_handicap
+from src.utils.io import load_config, get_processed_dir, get_raw_dir
 
 logging.basicConfig(level=logging.INFO, format="%(message)s")
 logger = logging.getLogger(__name__)
@@ -67,8 +68,81 @@ def fetch_fixtures() -> pd.DataFrame:
             df[tgt] = pd.to_numeric(df[fallback], errors="coerce")
         else:
             df[tgt] = np.nan
-    return df[["date", "league", "home_team", "away_team",
-               "home_odds", "draw_odds", "away_odds"]].reset_index(drop=True)
+
+    # Over/Under 2.5 odds (prefer Avg, fallback B365)
+    for src, tgt in [("Avg>2.5", "over25_odds"), ("Avg<2.5", "under25_odds")]:
+        fallback = src.replace("Avg", "B365")
+        if src in df.columns:
+            df[tgt] = pd.to_numeric(df[src], errors="coerce")
+        elif fallback in df.columns:
+            df[tgt] = pd.to_numeric(df[fallback], errors="coerce")
+        else:
+            df[tgt] = np.nan
+
+    # Asian handicap line + odds
+    if "AHh" in df.columns:
+        df["ah_line"] = pd.to_numeric(df["AHh"], errors="coerce")
+    else:
+        df["ah_line"] = np.nan
+    for src, tgt in [("AvgAHH", "ah_home_odds"), ("AvgAHA", "ah_away_odds")]:
+        fallback = src.replace("Avg", "B365")
+        if src in df.columns:
+            df[tgt] = pd.to_numeric(df[src], errors="coerce")
+        elif fallback in df.columns:
+            df[tgt] = pd.to_numeric(df[fallback], errors="coerce")
+        else:
+            df[tgt] = np.nan
+
+    keep = ["date", "league", "home_team", "away_team",
+            "home_odds", "draw_odds", "away_odds",
+            "over25_odds", "under25_odds",
+            "ah_line", "ah_home_odds", "ah_away_odds"]
+    return df[[c for c in keep if c in df.columns]].reset_index(drop=True)
+
+
+def _load_extra_odds_from_raw(target_date: pd.Timestamp) -> pd.DataFrame:
+    """Load O/U 2.5 and AH odds from raw match_history parquets for a specific date."""
+    raw_dir = get_raw_dir() / "match_history"
+    if not raw_dir.exists():
+        return pd.DataFrame()
+    frames = []
+    for f in sorted(raw_dir.glob("*.parquet")):
+        df = pd.read_parquet(f)
+        df["date"] = pd.to_datetime(df["date"])
+        day_df = df[df["date"].dt.normalize() == target_date.normalize()]
+        if day_df.empty:
+            continue
+        keep = {"date": "date", "home_team": "home_team", "away_team": "away_team"}
+        # O/U 2.5 — prefer Avg, fallback B365
+        for raw_col, fallback, tgt in [
+            ("Avg>2.5", "B365>2.5", "over25_odds"),
+            ("Avg<2.5", "B365<2.5", "under25_odds"),
+        ]:
+            col = raw_col if raw_col in day_df.columns else (fallback if fallback in day_df.columns else None)
+            if col:
+                keep[col] = tgt
+        # AH
+        if "AHh" in day_df.columns:
+            keep["AHh"] = "ah_line"
+        for raw_col, fallback, tgt in [
+            ("AvgAHH", "B365AHH", "ah_home_odds"),
+            ("AvgAHA", "B365AHA", "ah_away_odds"),
+        ]:
+            col = raw_col if raw_col in day_df.columns else (fallback if fallback in day_df.columns else None)
+            if col:
+                keep[col] = tgt
+
+        sub = day_df[[c for c in keep if c in day_df.columns]].copy()
+        sub = sub.rename(columns=keep)
+        for c in ["over25_odds", "under25_odds", "ah_line", "ah_home_odds", "ah_away_odds"]:
+            if c in sub.columns:
+                sub[c] = pd.to_numeric(sub[c], errors="coerce")
+        frames.append(sub)
+
+    if not frames:
+        return pd.DataFrame()
+    result = pd.concat(frames, ignore_index=True)
+    return result.drop_duplicates(subset=["date", "home_team", "away_team"], keep="last")
 
 
 def fetch_demo_fixtures(as_of: str) -> tuple[pd.DataFrame, pd.DataFrame]:
@@ -82,7 +156,26 @@ def fetch_demo_fixtures(as_of: str) -> tuple[pd.DataFrame, pd.DataFrame]:
     fx_cols = ["date", "league", "home_team", "away_team",
                "home_odds", "draw_odds", "away_odds"]
     act_cols = ["home_team", "away_team", "home_goals", "away_goals", "result"]
-    return day[fx_cols].reset_index(drop=True), day[act_cols].reset_index(drop=True)
+    fixtures = day[fx_cols].reset_index(drop=True)
+    actuals = day[act_cols].reset_index(drop=True)
+
+    # Merge extra odds from raw data
+    extra = _load_extra_odds_from_raw(target)
+    if not extra.empty:
+        fixtures["_date_key"] = fixtures["date"].dt.normalize()
+        extra["_date_key"] = pd.to_datetime(extra["date"]).dt.normalize()
+        n_before = len(fixtures)
+        fixtures = fixtures.merge(
+            extra.drop(columns=["date"]),
+            on=["_date_key", "home_team", "away_team"],
+            how="left",
+        )
+        fixtures.drop(columns=["_date_key"], inplace=True)
+        if len(fixtures) > n_before:
+            fixtures = fixtures.drop_duplicates(
+                subset=["date", "home_team", "away_team"], keep="first")
+
+    return fixtures.reset_index(drop=True), actuals
 
 
 def load_historical_data() -> pd.DataFrame:
@@ -253,7 +346,6 @@ def compute_all_predictions(fixtures, fx_features, elo_model, dc, xgb_model, act
             pick_idx = int(np.argmax(avg))
             pick_code = OUTCOME_MAP[pick_idx]
             avg_pct = avg[pick_idx]
-            # Check unanimity
             individual_picks = [OUTCOME_MAP[int(np.argmax(p))] for p in valid]
             unanimous = len(set(individual_picks)) == 1
         else:
@@ -267,6 +359,49 @@ def compute_all_predictions(fixtures, fx_features, elo_model, dc, xgb_model, act
             "probs": {"Market": mkt, "Elo": elo_p, "Dixon-Coles": dc_p, "XGBoost": xgb_p},
             "consensus": {"pick": pick_code, "avg_pct": avg_pct, "unanimous": unanimous},
         }
+
+        # ── Secondary markets from Dixon-Coles scoreline grid ──
+        try:
+            grid = dc.predict_scoreline_matrix(fx["home_team"], fx["away_team"])
+
+            # Over/Under 2.5
+            p_over, p_under = over_under(grid, 2.5)
+            ou_mkt = {}
+            if "over25_odds" in fx.index and pd.notna(fx.get("over25_odds")) and pd.notna(fx.get("under25_odds")):
+                raw_ou = np.array([1 / fx["over25_odds"], 1 / fx["under25_odds"]])
+                norm_ou = raw_ou / raw_ou.sum()
+                ou_mkt = {"over": float(norm_ou[0]), "under": float(norm_ou[1])}
+            entry["over_under"] = {
+                "model_over": p_over, "model_under": p_under,
+                "market": ou_mkt,
+            }
+
+            # BTTS (no market odds available — football-data.co.uk doesn't track BTTS)
+            p_btts_yes, p_btts_no = btts(grid)
+            entry["btts"] = {"yes": p_btts_yes, "no": p_btts_no}
+
+            # Correct score top 5
+            entry["correct_score"] = correct_score_top_n(grid, n=5)
+
+            # Asian handicap — only if a line is present in the data
+            ah_line_val = fx.get("ah_line") if "ah_line" in fx.index else None
+            if pd.notna(ah_line_val):
+                ah_line_val = float(ah_line_val)
+                p_cover, p_push, p_lose = asian_handicap(grid, ah_line_val, side="home")
+                ah_mkt = {}
+                if pd.notna(fx.get("ah_home_odds")) and pd.notna(fx.get("ah_away_odds")):
+                    # AH odds are 2-way (push returns stake), devig by normalising
+                    raw_ah = np.array([1 / fx["ah_home_odds"], 1 / fx["ah_away_odds"]])
+                    norm_ah = raw_ah / raw_ah.sum()
+                    ah_mkt = {"home_cover": float(norm_ah[0]), "away_cover": float(norm_ah[1])}
+                entry["asian_handicap"] = {
+                    "line": ah_line_val,
+                    "home_cover": p_cover, "push": p_push, "home_lose": p_lose,
+                    "market": ah_mkt,
+                }
+        except KeyError:
+            pass  # DC doesn't know one of the teams
+
         if show_actuals:
             act = actuals.iloc[i]
             entry["actual"] = {
@@ -324,6 +459,41 @@ def render_terminal(predictions, demo_mode):
                 h, d, a = _fmt_pct(p[0]), _fmt_pct(p[1]), _fmt_pct(p[2])
                 print(f"    {src:<14} Home {h:>6}   Draw {d:>6}   Away {a:>6}")
 
+            # ── Secondary markets ──
+            if "over_under" in m:
+                ou = m["over_under"]
+                model_str = f"Over {ou['model_over']*100:.1f}%  Under {ou['model_under']*100:.1f}%"
+                if ou["market"]:
+                    mkt_str = (f"  (Market: Over {ou['market']['over']*100:.1f}%"
+                               f"  Under {ou['market']['under']*100:.1f}%)")
+                else:
+                    mkt_str = ""
+                print(f"    {'O/U 2.5':<14} {model_str}{mkt_str}")
+
+            if "btts" in m:
+                b = m["btts"]
+                print(f"    {'BTTS':<14} Yes {b['yes']*100:.1f}%  No {b['no']*100:.1f}%"
+                      f"  (model only — no market odds available)")
+
+            if "correct_score" in m:
+                scores = m["correct_score"]
+                parts = [f"{s}: {p*100:.1f}%" for s, p in scores]
+                print(f"    {'Top scores':<14} {', '.join(parts)}")
+
+            if "asian_handicap" in m:
+                ah = m["asian_handicap"]
+                line = ah["line"]
+                line_str = f"{line:+.2g}" if line != 0 else "0"
+                model_str = (f"Home covers {ah['home_cover']*100:.1f}%"
+                             f"  Push {ah['push']*100:.1f}%"
+                             f"  Loses {ah['home_lose']*100:.1f}%")
+                if ah["market"]:
+                    mkt_str = (f"  (Market: Home {ah['market']['home_cover']*100:.1f}%"
+                               f"  Away {ah['market']['away_cover']*100:.1f}%)")
+                else:
+                    mkt_str = ""
+                print(f"    {'AH ' + line_str:<14} {model_str}{mkt_str}")
+
             if "actual" in m:
                 act = m["actual"]
                 print(f"    {'Result':<14} {act['home_goals']}-{act['away_goals']}"
@@ -366,6 +536,24 @@ h2 { font-size: 1.2rem; margin: 24px 0 10px 0; }
 .seg-home { background: #3b82f6; }
 .seg-draw { background: #9ca3af; }
 .seg-away { background: #ef4444; }
+.secondary-markets { margin-top: 12px; padding-top: 10px; border-top: 1px solid #eee; }
+.secondary-markets h4 { font-size: 0.82rem; font-weight: 600; color: #555;
+                         margin: 8px 0 4px 0; }
+.secondary-markets h4:first-child { margin-top: 0; }
+.two-bar { display: flex; height: 22px; border-radius: 4px; overflow: hidden;
+           margin-bottom: 2px; }
+.two-bar .seg-over { background: #f59e0b; }
+.two-bar .seg-under { background: #6366f1; }
+.two-bar .seg-yes { background: #22c55e; }
+.two-bar .seg-no { background: #ef4444; }
+.two-bar .seg-cover { background: #3b82f6; }
+.two-bar .seg-push { background: #9ca3af; }
+.two-bar .seg-lose { background: #ef4444; }
+.bar-label { font-size: 0.72rem; color: #888; margin-bottom: 6px; }
+.score-list { display: flex; flex-wrap: wrap; gap: 6px; margin: 4px 0; }
+.score-chip { background: #f3f4f6; border: 1px solid #e5e7eb; border-radius: 4px;
+              padding: 2px 8px; font-size: 0.78rem; font-weight: 500; }
+.score-chip .pct { color: #666; font-weight: 400; }
 .result-line { margin-top: 10px; padding-top: 8px; border-top: 1px solid #eee;
                font-size: 0.88rem; font-weight: 500; }
 .correct { border-left: 4px solid #22c55e; }
@@ -462,6 +650,76 @@ def render_html(predictions, demo_mode, as_of_date):
                 body.append(f'<div class="source-label">{html_mod.escape(src)}</div>')
                 body.append(f'<div class="bar-wrap">{_bar_segments(p)}</div>')
                 body.append("</div>")
+
+            # ── Secondary markets ──
+            has_secondary = any(k in m for k in ("over_under", "btts", "correct_score", "asian_handicap"))
+            if has_secondary:
+                body.append('<div class="secondary-markets">')
+
+                if "over_under" in m:
+                    ou = m["over_under"]
+                    body.append('<h4>Over/Under 2.5 Goals</h4>')
+                    p_o, p_u = ou["model_over"], ou["model_under"]
+                    w_o, w_u = max(p_o * 100, 4), max(p_u * 100, 4)
+                    body.append(
+                        f'<div class="two-bar">'
+                        f'<div class="seg seg-over" style="width:{w_o:.1f}%">O {p_o*100:.0f}%</div>'
+                        f'<div class="seg seg-under" style="width:{w_u:.1f}%">U {p_u*100:.0f}%</div>'
+                        f'</div>')
+                    if ou["market"]:
+                        body.append(
+                            f'<div class="bar-label">Market: Over {ou["market"]["over"]*100:.1f}%'
+                            f' / Under {ou["market"]["under"]*100:.1f}%</div>')
+                    else:
+                        body.append('<div class="bar-label">Model only</div>')
+
+                if "btts" in m:
+                    b = m["btts"]
+                    body.append('<h4>Both Teams to Score</h4>')
+                    w_y, w_n = max(b["yes"] * 100, 4), max(b["no"] * 100, 4)
+                    body.append(
+                        f'<div class="two-bar">'
+                        f'<div class="seg seg-yes" style="width:{w_y:.1f}%">Yes {b["yes"]*100:.0f}%</div>'
+                        f'<div class="seg seg-no" style="width:{w_n:.1f}%">No {b["no"]*100:.0f}%</div>'
+                        f'</div>')
+                    body.append('<div class="bar-label">Model only — no BTTS odds in data source</div>')
+
+                if "correct_score" in m:
+                    body.append('<h4>Most Likely Scores</h4>')
+                    body.append('<div class="score-list">')
+                    for score, prob in m["correct_score"]:
+                        body.append(
+                            f'<div class="score-chip">{html_mod.escape(score)}'
+                            f' <span class="pct">{prob*100:.1f}%</span></div>')
+                    body.append('</div>')
+
+                if "asian_handicap" in m:
+                    ah = m["asian_handicap"]
+                    line = ah["line"]
+                    line_str = f"{line:+.2g}" if line != 0 else "0"
+                    body.append(f'<h4>Asian Handicap ({html_mod.escape(line_str)})</h4>')
+                    w_c = max(ah["home_cover"] * 100, 4)
+                    w_p = max(ah["push"] * 100, 2) if ah["push"] > 0.005 else 0
+                    w_l = max(ah["home_lose"] * 100, 4)
+                    parts = (
+                        f'<div class="seg seg-cover" style="width:{w_c:.1f}%">'
+                        f'Cover {ah["home_cover"]*100:.0f}%</div>')
+                    if w_p > 0:
+                        parts += (
+                            f'<div class="seg seg-push" style="width:{w_p:.1f}%">'
+                            f'Push {ah["push"]*100:.0f}%</div>')
+                    parts += (
+                        f'<div class="seg seg-lose" style="width:{w_l:.1f}%">'
+                        f'Lose {ah["home_lose"]*100:.0f}%</div>')
+                    body.append(f'<div class="two-bar">{parts}</div>')
+                    if ah["market"]:
+                        body.append(
+                            f'<div class="bar-label">Market: Home {ah["market"]["home_cover"]*100:.1f}%'
+                            f' / Away {ah["market"]["away_cover"]*100:.1f}%</div>')
+                    else:
+                        body.append('<div class="bar-label">Model only</div>')
+
+                body.append('</div>')
 
             if has_actual:
                 act = m["actual"]

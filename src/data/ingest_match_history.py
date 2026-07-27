@@ -1,7 +1,6 @@
 """Pull historical match results + closing odds from football-data.co.uk via soccerdata."""
 
 import logging
-from pathlib import Path
 
 import soccerdata as sd
 

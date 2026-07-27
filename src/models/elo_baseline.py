@@ -6,7 +6,6 @@ regression must be fit on training data per walk-forward split to avoid
 leakage.
 """
 
-import numpy as np
 from sklearn.linear_model import LogisticRegression
 
 
@@ -24,12 +23,3 @@ def fit_elo_calibrator(train_df) -> LogisticRegression:
     model = LogisticRegression(solver="lbfgs", max_iter=1000)
     model.fit(X, y)
     return model
-
-
-def predict_calibrated(model: LogisticRegression, test_df) -> np.ndarray:
-    """Predict (p_home, p_draw, p_away) using a fitted calibrator.
-
-    Returns array of shape (n, 3).
-    """
-    X = test_df[["elo_diff"]].values
-    return model.predict_proba(X)

@@ -5,8 +5,6 @@ Part B: Walk-forward backtest comparing V1 vs V2 xG features
 """
 
 import logging
-import sys
-from pathlib import Path
 
 import numpy as np
 import pandas as pd
@@ -21,7 +19,7 @@ from src.models.gbm_classifier import (
     FEATURES_OWN_SIGNAL_V2, FEATURES_MARKET_BLEND_V2,
 )
 from src.backtest.evaluate import walk_forward_splits, brier_score, log_loss, MIN_TRAIN_MATCHES
-from src.backtest.clv import compute_clv, EDGE_THRESHOLD
+from src.backtest.clv import compute_clv
 from src.utils.io import get_raw_dir
 
 logging.basicConfig(level=logging.INFO, format="%(message)s")
@@ -206,7 +204,6 @@ def main():
             all_metrics["Market"]["logloss"].append(log_loss(y_test, mkt_probs_full))
 
         # Elo calibrator
-        from sklearn.linear_model import LogisticRegression
         elo_model = fit_elo_calibrator(train)
         elo_probs = elo_model.predict_proba(test[["elo_diff"]].values)
         all_metrics["Elo"]["brier"].append(brier_score(y_test, elo_probs))
