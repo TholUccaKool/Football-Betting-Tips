@@ -1,4 +1,4 @@
-name: Predict & Deploy to Pages
+name: Predict & Deploy to Vercel
 
 on:
   schedule:
@@ -12,19 +12,14 @@ on:
 
 permissions:
   contents: read
-  pages: write
-  id-token: write
 
 concurrency:
-  group: pages
+  group: deploy
   cancel-in-progress: false
 
 jobs:
   predict:
     runs-on: ubuntu-latest
-    environment:
-      name: github-pages
-      url: ${{ steps.deploy.outputs.page_url }}
     steps:
       - uses: actions/checkout@v4
 
@@ -60,22 +55,24 @@ jobs:
             python -m src.predict.predict_fixtures --html --as-of 2026-05-24
           fi
 
-      - name: Prepare Pages artifact
+      - name: Prepare deploy directory
         run: |
-          mkdir -p _site
-          # Copy the most recent predictions HTML as index.html
+          mkdir -p _deploy
           LATEST=$(ls -t output/predictions_*.html 2>/dev/null | head -1)
           if [ -z "$LATEST" ]; then
             echo "::error::No predictions HTML found"
             exit 1
           fi
-          cp "$LATEST" _site/index.html
-          echo "Deploying: $LATEST -> _site/index.html"
+          cp "$LATEST" _deploy/index.html
+          echo "Deploying: $LATEST -> _deploy/index.html"
 
-      - uses: actions/upload-pages-artifact@v3
-        with:
-          overwrite: true
-
-      - name: Deploy to GitHub Pages
-        id: deploy
-        uses: actions/deploy-pages@v4
+      - name: Deploy to Vercel
+        run: |
+          npm i -g vercel
+          mkdir -p .vercel
+          echo "{\"projectId\":\"$VERCEL_PROJECT_ID\",\"orgId\":\"$VERCEL_ORG_ID\"}" > .vercel/project.json
+          vercel deploy --prod --token=$VERCEL_TOKEN --yes _deploy
+        env:
+          VERCEL_TOKEN: ${{ secrets.VERCEL_TOKEN }}
+          VERCEL_ORG_ID: ${{ secrets.VERCEL_ORG_ID }}
+          VERCEL_PROJECT_ID: ${{ secrets.VERCEL_PROJECT_ID }}

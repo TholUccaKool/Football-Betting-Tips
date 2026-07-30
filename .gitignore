@@ -10,3 +10,5 @@ venv/
 dist/
 build/
 output/
+.vercel
+.env*
