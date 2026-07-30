@@ -307,6 +307,43 @@ def _agreement_text(m):
     return "sources split: " + ", ".join(parts)
 
 
+def _best_secondary_pick(m):
+    """Return the best secondary-market pick for a match, or None.
+
+    Returns dict with keys: market, pick_text, prob, tag.
+    """
+    candidates = []
+
+    if "over_under" in m:
+        ou = m["over_under"]
+        p_over, p_under = ou["model_over"], ou["model_under"]
+        if p_over >= p_under:
+            candidates.append(("O/U", f"Over 2.5 goals", p_over, ""))
+        else:
+            candidates.append(("O/U", f"Under 2.5 goals", p_under, ""))
+
+    if "btts" in m:
+        b = m["btts"]
+        if b["yes"] >= b["no"]:
+            candidates.append(("BTTS", "Both teams to score", b["yes"], "(unvalidated)"))
+        else:
+            candidates.append(("BTTS", "One or both teams kept clean", b["no"], "(unvalidated)"))
+
+    if "asian_handicap" in m:
+        ah = m["asian_handicap"]
+        line = ah["line"]
+        line_str = f"{line:+.2g}" if line != 0 else "0"
+        if ah["home_cover"] >= ah["home_lose"]:
+            candidates.append(("AH", f"{m['home_team']} covers AH {line_str}", ah["home_cover"], ""))
+        else:
+            candidates.append(("AH", f"{m['away_team']} covers AH {line_str}", ah["home_lose"], ""))
+
+    if not candidates:
+        return None
+    best = max(candidates, key=lambda x: x[2])
+    return {"market": best[0], "pick_text": best[1], "prob": best[2], "tag": best[3]}
+
+
 def compute_all_predictions(fixtures, fx_features, elo_model, dc, xgb_model, actuals=None):
     """Return list of dicts, one per match, with all probabilities and consensus."""
     show_actuals = actuals is not None and not actuals.empty
@@ -432,6 +469,26 @@ def render_terminal(predictions, demo_mode):
         matchup = f"{m['home_team']} v {m['away_team']}"
         tag = "unanimous" if m["consensus"]["unanimous"] else "split"
         print(f"  {i:>2}. {pick_text:<28} ({matchup}) — {pct:.1f}% [{tag}]")
+
+    # Other Markets section
+    secondary_picks = []
+    for m in predictions:
+        pick = _best_secondary_pick(m)
+        if pick:
+            secondary_picks.append((m, pick))
+    if secondary_picks:
+        secondary_picks.sort(key=lambda x: x[1]["prob"], reverse=True)
+        print(f"\n{'━' * 64}")
+        print("  OTHER MARKETS THIS ROUND (O/U, BTTS, Asian Handicap)")
+        print(f"{'━' * 64}")
+        print("  Note: these run ~7pp overconfident on average (stated ~65%,")
+        print("  actual ~58% in 8-season backtest). Directionally useful,")
+        print("  not literally accurate. BTTS is unvalidated against odds.")
+        for i, (m, pick) in enumerate(secondary_picks, 1):
+            matchup = f"{m['home_team']} v {m['away_team']}"
+            tag = f" {pick['tag']}" if pick["tag"] else ""
+            print(f"  {i:>2}. [{pick['market']}] {pick['pick_text']:<30}"
+                  f" ({matchup}) — {pick['prob']*100:.1f}%{tag}")
 
     # Per-league blocks
     by_league = {}
@@ -563,6 +620,21 @@ h2 { font-size: 1.2rem; margin: 24px 0 10px 0; }
 .incorrect { border-left: 4px solid #ef4444; }
 .footer { margin-top: 32px; padding-top: 16px; border-top: 1px solid #ccc;
           font-size: 0.8rem; color: #888; }
+.other-markets { background: #fff; border-radius: 8px; border: 1px solid #ddd;
+                 padding: 14px 18px; margin-bottom: 24px; }
+.other-markets ol { padding-left: 24px; }
+.other-markets li { padding: 3px 0; font-size: 0.9rem; }
+.other-markets .pick-name { font-weight: 600; }
+.other-markets .pick-matchup { color: #666; }
+.other-markets .pick-tag { font-size: 0.78rem; color: #888; }
+.other-markets .market-tag { font-size: 0.78rem; font-weight: 600; color: #fff;
+                             border-radius: 3px; padding: 1px 5px; margin-right: 4px; }
+.other-markets .market-tag-ou { background: #f59e0b; }
+.other-markets .market-tag-btts { background: #22c55e; }
+.other-markets .market-tag-ah { background: #3b82f6; }
+.other-markets .caveat { font-size: 0.82rem; color: #888; margin-bottom: 10px;
+                         line-height: 1.4; }
+.unvalidated { font-size: 0.75rem; color: #b45309; font-style: italic; }
 """
 
 
@@ -634,6 +706,38 @@ def render_html(predictions, demo_mode, as_of_date):
             f'&mdash; {pct:.1f}% '
             f'<span class="pick-tag">[{tag}]</span></li>')
     body.append('</ol></div>')
+
+    # Other Markets section
+    secondary_picks = []
+    for m in predictions:
+        pick = _best_secondary_pick(m)
+        if pick:
+            secondary_picks.append((m, pick))
+    if secondary_picks:
+        secondary_picks.sort(key=lambda x: x[1]["prob"], reverse=True)
+        body.append('<h2>Other Markets This Round (O/U, BTTS, Asian Handicap)</h2>')
+        body.append('<div class="other-markets">')
+        body.append(
+            '<p class="caveat">These often show higher confidence than the H/D/A picks '
+            'above, but a full 8-season backtest found they run ~7 percentage points '
+            'overconfident on average (stated ~65%, actual hit rate ~58%) &mdash; read '
+            'these as directionally useful, not literally accurate. BTTS specifically '
+            'has never been checked against real bookmaker odds at all.</p>')
+        body.append('<ol>')
+        for m, pick in secondary_picks:
+            market = html_mod.escape(pick["market"])
+            market_cls = {"O/U": "ou", "BTTS": "btts", "AH": "ah"}.get(pick["market"], "ou")
+            pick_text = html_mod.escape(pick["pick_text"])
+            matchup = html_mod.escape(f"{m['home_team']} v {m['away_team']}")
+            pct = pick["prob"] * 100
+            unvalidated = (' <span class="unvalidated">(unvalidated)</span>'
+                           if pick["tag"] else "")
+            body.append(
+                f'<li><span class="market-tag market-tag-{market_cls}">{market}</span>'
+                f'<span class="pick-name">{pick_text}</span> '
+                f'<span class="pick-matchup">({matchup})</span> '
+                f'&mdash; {pct:.1f}%{unvalidated}</li>')
+        body.append('</ol></div>')
 
     # Per-league cards
     for league in sorted(by_league):
