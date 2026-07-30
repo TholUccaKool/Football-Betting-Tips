@@ -511,6 +511,9 @@ h2 { font-size: 1.2rem; margin: 24px 0 10px 0; }
 .meta { color: #666; font-size: 0.85rem; margin-bottom: 16px; }
 .demo-banner { background: #fff3cd; border: 1px solid #ffc107; border-radius: 6px;
                padding: 10px 14px; margin-bottom: 20px; font-size: 0.9rem; }
+.about-box { background: #f0f4ff; border: 1px solid #c7d2fe; border-radius: 8px;
+             padding: 14px 18px; margin-bottom: 20px; font-size: 0.88rem; line-height: 1.5; }
+.about-box strong { color: #4338ca; }
 .top-picks { background: #fff; border-radius: 8px; border: 1px solid #ddd;
              padding: 14px 18px; margin-bottom: 24px; }
 .top-picks ol { padding-left: 24px; }
@@ -601,6 +604,20 @@ def render_html(predictions, demo_mode, as_of_date):
             f'<div class="demo-banner">[DEMO MODE] Using historical date '
             f'{html_mod.escape(as_of_date)} as a stand-in for upcoming fixtures '
             f'&mdash; NOT live data</div>')
+
+    # About box (HTML only — for people opening the shared link cold)
+    body.append(
+        '<div class="about-box">'
+        '<strong>What is this?</strong> '
+        'Automated football match predictions for the top European leagues, '
+        'built from three statistical models (Elo ratings, Dixon-Coles, and XGBoost) '
+        'trained on eight seasons of historical data. '
+        'Updates automatically three times a week (Mon/Tue/Fri). '
+        '<strong>Important:</strong> these are model estimates of what\'s most likely '
+        'to happen, not betting advice. After extensive testing against real bookmaker '
+        'closing lines, none of these models consistently beat the market &mdash; '
+        'treat this as an informed second opinion, not a way to make money.'
+        '</div>')
 
     # Top picks
     ranked = sorted(predictions, key=lambda m: m["consensus"]["avg_pct"], reverse=True)
