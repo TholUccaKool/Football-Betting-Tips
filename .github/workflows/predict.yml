@@ -55,23 +55,23 @@ jobs:
             python -m src.predict.predict_fixtures --html --as-of 2026-05-24
           fi
 
-      - name: Prepare deploy directory
+      - name: Prepare Vercel prebuilt output
         run: |
-          mkdir -p _deploy
           LATEST=$(ls -t output/predictions_*.html 2>/dev/null | head -1)
           if [ -z "$LATEST" ]; then
             echo "::error::No predictions HTML found"
             exit 1
           fi
-          cp "$LATEST" _deploy/index.html
-          echo "Deploying: $LATEST -> _deploy/index.html"
+          mkdir -p .vercel/output/static
+          cp "$LATEST" .vercel/output/static/index.html
+          echo '{"version":3}' > .vercel/output/config.json
+          echo "Deploying: $LATEST"
 
       - name: Deploy to Vercel
         run: |
           npm i -g vercel
-          mkdir -p .vercel
           echo "{\"projectId\":\"$VERCEL_PROJECT_ID\",\"orgId\":\"$VERCEL_ORG_ID\"}" > .vercel/project.json
-          vercel deploy --prod --token=$VERCEL_TOKEN --yes _deploy
+          vercel deploy --prebuilt --prod --token=$VERCEL_TOKEN --yes
         env:
           VERCEL_TOKEN: ${{ secrets.VERCEL_TOKEN }}
           VERCEL_ORG_ID: ${{ secrets.VERCEL_ORG_ID }}
