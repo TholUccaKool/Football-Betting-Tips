@@ -30,12 +30,16 @@ logging.basicConfig(level=logging.INFO, format="%(message)s")
 logger = logging.getLogger(__name__)
 
 FIXTURES_URL = "https://www.football-data.co.uk/fixtures.csv"
-TARGET_DIVS = {"E0", "SP1", "I1", "D1", "F1"}
-LEAGUE_NAMES = {"EPL", "La Liga", "Serie A", "Bundesliga", "Ligue 1"}
 DIV_TO_LEAGUE = {
+    # Core 5
     "E0": "EPL", "SP1": "La Liga", "I1": "Serie A",
     "D1": "Bundesliga", "F1": "Ligue 1",
+    # Secondary 4
+    "E1": "Championship", "SP2": "Segunda Division",
+    "N1": "Eredivisie", "P1": "Primeira Liga",
 }
+TARGET_DIVS = set(DIV_TO_LEAGUE.keys())
+LEAGUE_NAMES = set(DIV_TO_LEAGUE.values())
 
 ROOT_DIR = Path(__file__).resolve().parents[2]
 SOURCE_LABELS = ["Market", "Elo", "Dixon-Coles", "XGBoost"]
@@ -901,7 +905,7 @@ def main():
         )
         fixtures, actuals = fetch_demo_fixtures(args.as_of)
         if fixtures.empty:
-            print(f"\nNo matches found on {args.as_of} for the 5 target leagues.")
+            print(f"\nNo matches found on {args.as_of} for the {len(TARGET_DIVS)} target leagues.")
             return
         print(f"Found {len(fixtures)} matches on {args.as_of} across: "
               f"{', '.join(sorted(fixtures['league'].unique()))}")
@@ -909,7 +913,7 @@ def main():
         print("\nFetching upcoming fixtures from football-data.co.uk...")
         fixtures = fetch_fixtures()
         if fixtures.empty:
-            print("\nNo upcoming fixtures found for the 5 target leagues.")
+            print(f"\nNo upcoming fixtures found for the {len(TARGET_DIVS)} target leagues.")
             print("This is expected during the off-season (June-August).")
             print("Tip: use --as-of YYYY-MM-DD to demo against a past matchday.")
             print("\nDivisions currently in the fixtures file:")
