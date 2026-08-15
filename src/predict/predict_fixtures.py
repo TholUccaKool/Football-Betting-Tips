@@ -140,17 +140,19 @@ def fetch_fixtures() -> pd.DataFrame:
         return df
     df["date"] = pd.to_datetime(df["Date"], format="%d/%m/%Y")
 
-    # Drop matches that have already kicked off (date+time < now)
-    now = datetime.now()
+    # Merge kickoff time into date so cards show real times
     if "Time" in df.columns:
         kick = df["date"] + pd.to_timedelta(
             df["Time"].fillna("23:59").astype(str).str.strip() + ":00"
         )
     else:
-        # No time column — treat entire day as the cutoff
         kick = df["date"] + pd.Timedelta(hours=23, minutes=59)
+    df["date"] = kick  # replace midnight-only with full datetime
+
+    # Drop matches that have already kicked off (date+time < now)
+    now = datetime.now()
     n_before = len(df)
-    df = df[kick >= now].copy()
+    df = df[df["date"] >= now].copy()
     n_dropped = n_before - len(df)
     if n_dropped:
         logger.info("  Dropped %d already-kicked-off fixture(s)", n_dropped)
