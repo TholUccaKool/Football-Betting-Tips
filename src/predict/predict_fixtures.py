@@ -8,9 +8,11 @@ Models are fit on all available historical data up to the target date.
 import argparse
 import html as html_mod
 import io
+import json
 import logging
 import sys
-from datetime import datetime
+import time
+from datetime import datetime, timedelta
 from pathlib import Path
 
 import numpy as np
@@ -45,6 +47,83 @@ ROOT_DIR = Path(__file__).resolve().parents[2]
 SOURCE_LABELS = ["Market", "Elo", "Dixon-Coles", "XGBoost"]
 OUTCOME_MAP = {0: "H", 1: "D", 2: "A"}
 OUTCOME_WORDS = {"H": "Home win", "D": "Draw", "A": "Away win"}
+
+# ── TheSportsDB fallback ────────────────────────────────────────────────
+TSDB_LEAGUE_IDS = {
+    "EPL": 4328, "La Liga": 4335, "Serie A": 4332,
+    "Bundesliga": 4331, "Ligue 1": 4334,
+    "Championship": 4329, "Segunda Division": 4400,
+    "Eredivisie": 4337, "Primeira Liga": 4344,
+}
+# TheSportsDB team name → football-data.co.uk canonical name (matches.parquet)
+_TSDB_TO_FD = {
+    # La Liga
+    "Deportivo Alavés": "Alaves", "Athletic Bilbao": "Ath Bilbao",
+    "Atlético Madrid": "Ath Madrid", "Celta Vigo": "Celta",
+    "Real Betis": "Betis", "Rayo Vallecano": "Vallecano",
+    "Real Sociedad": "Sociedad", "Deportivo de A Coruña": "La Coruna",
+    "Racing de Santander": "Santander", "Málaga": "Malaga",
+    # EPL
+    "Manchester City": "Man City", "Manchester United": "Man United",
+    "Newcastle United": "Newcastle", "Nottingham Forest": "Nott'm Forest",
+    "Leeds United": "Leeds", "Leicester City": "Leicester",
+    "Wolverhampton Wanderers": "Wolves", "West Bromwich Albion": "West Brom",
+    "West Ham United": "West Ham", "Brighton and Hove Albion": "Brighton",
+    "Ipswich Town": "Ipswich", "Coventry City": "Coventry",
+    "Sheffield United": "Sheffield United", "Hull City": "Hull",
+    "Sunderland AFC": "Sunderland", "AFC Bournemouth": "Bournemouth",
+    # Serie A
+    "Inter Milan": "Inter", "AC Milan": "Milan",
+    "Hellas Verona": "Verona",
+    # Bundesliga
+    "Borussia Dortmund": "Dortmund", "Eintracht Frankfurt": "Ein Frankfurt",
+    "Borussia Mönchengladbach": "M'gladbach", "Bayer Leverkusen": "Leverkusen",
+    "FC Cologne": "FC Koln", "SC Freiburg": "Freiburg",
+    "TSG Hoffenheim": "Hoffenheim", "VfL Wolfsburg": "Wolfsburg",
+    "Werder Bremen": "Werder Bremen", "FC Augsburg": "Augsburg",
+    "Hertha Berlin": "Hertha", "Schalke 04": "Schalke 04",
+    "SC Paderborn 07": "Paderborn", "Holstein Kiel": "Holstein Kiel",
+    "FC St. Pauli": "St Pauli", "Mainz 05": "Mainz",
+    "VfB Stuttgart": "Stuttgart", "Hamburger SV": "Hamburg",
+    # Ligue 1
+    "Paris Saint-Germain": "Paris SG", "AS Monaco": "Monaco",
+    "Saint-Étienne": "St Etienne", "Stade Rennais": "Rennes",
+    "Stade Brestois 29": "Brest", "Montpellier HSC": "Montpellier",
+    "RC Lens": "Lens", "OGC Nice": "Nice",
+    "Olympique Lyonnais": "Lyon", "Olympique de Marseille": "Marseille",
+    "FC Nantes": "Nantes", "Stade de Reims": "Reims",
+    "Clermont Foot": "Clermont", "Angers SCO": "Angers",
+    # Eredivisie
+    "NEC Nijmegen": "Nijmegen", "ADO Den Haag": "Den Haag",
+    "Fortuna Sittard": "For Sittard", "RKC Waalwijk": "Waalwijk",
+    "FC Twente": "Twente", "FC Utrecht": "Utrecht",
+    "FC Groningen": "Groningen", "SC Heerenveen": "Heerenveen",
+    "PEC Zwolle": "Zwolle", "SC Cambuur": "Cambuur",
+    # Primeira Liga
+    "Sporting CP": "Sp Lisbon", "Sporting Braga": "Sp Braga",
+    "Vitória de Guimarães": "Guimaraes", "Marítimo": "Maritimo",
+    "Estoril Praia": "Estoril", "Estrela Amadora": "Estrela",
+    "Académico de Viseu": "Vizela", "Paços de Ferreira": "Pacos Ferreira",
+    # La Liga (accent variant)
+    "Espanyol": "Espanol",
+    # Championship
+    "Blackburn Rovers": "Blackburn", "Bolton Wanderers": "Bolton",
+    "Preston North End": "Preston", "Norwich City": "Norwich",
+    "Lincoln City": "Lincoln", "Queens Park Rangers": "QPR",
+    "Swansea City": "Swansea", "Sheffield Wednesday": "Sheffield Weds",
+    "Stoke City": "Stoke", "Cardiff City": "Cardiff",
+    "Derby County": "Derby", "Huddersfield Town": "Huddersfield",
+    "Plymouth Argyle": "Plymouth", "Wigan Athletic": "Wigan",
+    "Peterborough United": "Peterboro", "Oxford United": "Oxford",
+    "Portsmouth FC": "Portsmouth", "Luton Town": "Luton",
+    # Segunda Division
+    "Sporting de Gijón": "Sp Gijon", "Real Zaragoza": "Zaragoza",
+    "CD Tenerife": "Tenerife", "Gimnàstic de Tarragona": "Gimnastic",
+    "Real Sociedad B": "Sociedad B", "Castellón": "Castellon",
+    "Real Oviedo": "Oviedo", "Cádiz": "Cadiz",
+    "Celta Fortuna": "Celta Fortuna",  # new team, no historical data
+    "Real Valladolid": "Valladolid", "FC Andorra": "Andorra",
+}
 
 
 # ── Data loading ─────────────────────────────────────────────────────────
@@ -120,6 +199,67 @@ def fetch_fixtures() -> pd.DataFrame:
             "over25_odds", "under25_odds",
             "ah_line", "ah_home_odds", "ah_away_odds"]
     return df[[c for c in keep if c in df.columns]].reset_index(drop=True)
+
+
+def _map_tsdb_team(name: str) -> str:
+    """Map a TheSportsDB team name to its football-data.co.uk canonical name."""
+    return _TSDB_TO_FD.get(name, name)
+
+
+def fetch_tsdb_fixtures(leagues: list[str]) -> pd.DataFrame:
+    """Fetch upcoming fixtures from TheSportsDB for the given league names.
+
+    Uses the eventsday endpoint (uncapped on free tier) across the next 7 days.
+    Returns a DataFrame with the same columns as fetch_fixtures but odds set to NaN.
+    """
+    if not leagues:
+        return pd.DataFrame()
+
+    today = datetime.now().date()
+    rows = []
+    for league in leagues:
+        tsdb_id = TSDB_LEAGUE_IDS.get(league)
+        if tsdb_id is None:
+            continue
+        for day_offset in range(7):
+            day = today + timedelta(days=day_offset)
+            url = (f"https://www.thesportsdb.com/api/v1/json/3/"
+                   f"eventsday.php?d={day.isoformat()}&l={tsdb_id}")
+            try:
+                resp = requests.get(url, timeout=15)
+                resp.raise_for_status()
+                data = resp.json()
+                time.sleep(0.5)  # rate-limit courtesy
+            except Exception as exc:
+                logger.warning("  TheSportsDB request failed for %s %s: %s",
+                               league, day, exc)
+                continue
+            events = data.get("events") or []
+            for ev in events:
+                if ev.get("strStatus") != "NS":
+                    continue  # skip already-played or postponed
+                kick_str = ev.get("strTimestamp", "")
+                try:
+                    kick_dt = pd.Timestamp(kick_str)
+                except Exception:
+                    kick_dt = pd.Timestamp(day)
+                if kick_dt < pd.Timestamp.now():
+                    continue  # already kicked off
+                rows.append({
+                    "date": kick_dt,
+                    "league": league,
+                    "home_team": _map_tsdb_team(ev["strHomeTeam"]),
+                    "away_team": _map_tsdb_team(ev["strAwayTeam"]),
+                    "home_odds": np.nan,
+                    "draw_odds": np.nan,
+                    "away_odds": np.nan,
+                    "_from_tsdb": True,
+                })
+    if not rows:
+        return pd.DataFrame()
+    df = pd.DataFrame(rows)
+    df["_from_tsdb"] = True
+    return df.drop_duplicates(subset=["date", "home_team", "away_team"]).reset_index(drop=True)
 
 
 def _load_extra_odds_from_raw(target_date: pd.Timestamp) -> pd.DataFrame:
@@ -314,8 +454,11 @@ def _consensus_pick(m):
 def _agreement_text(m):
     """Return a short string describing source agreement."""
     con = m["consensus"]
+    n = con.get("n_sources", 4)
+    no_mkt = con.get("no_market", False)
+    suffix = f" — {n} sources, no market" if no_mkt else ""
     if con["unanimous"]:
-        return "all sources agree"
+        return f"all sources agree{suffix}"
     # Count per-source top picks
     counts = {"H": 0, "D": 0, "A": 0}
     for src in SOURCE_LABELS:
@@ -326,7 +469,7 @@ def _agreement_text(m):
     for code, label in [("H", "Home"), ("D", "Draw"), ("A", "Away")]:
         if counts[code] > 0:
             parts.append(f"{counts[code]} {label}")
-    return "sources split: " + ", ".join(parts)
+    return "sources split: " + ", ".join(parts) + suffix
 
 
 def _best_secondary_pick(m):
@@ -373,6 +516,7 @@ def compute_all_predictions(fixtures, fx_features, elo_model, dc, xgb_model, act
     for i in range(len(fixtures)):
         fx = fixtures.iloc[i]
         feat = fx_features.iloc[i:i + 1]
+        is_tsdb = bool(fx.get("_from_tsdb", False))
 
         odds_ok = all(pd.notna(fx[c]) for c in ["home_odds", "draw_odds", "away_odds"])
         if odds_ok:
@@ -391,15 +535,20 @@ def compute_all_predictions(fixtures, fx_features, elo_model, dc, xgb_model, act
         except KeyError:
             dc_p = np.array([np.nan, np.nan, np.nan])
 
-        try:
-            xgb_p = xgb_model.predict_proba(feat)[0]
-        except Exception:
+        # Skip XGBoost market-blend for TSDB fixtures (no odds to blend with)
+        if is_tsdb:
             xgb_p = np.array([np.nan, np.nan, np.nan])
+        else:
+            try:
+                xgb_p = xgb_model.predict_proba(feat)[0]
+            except Exception:
+                xgb_p = np.array([np.nan, np.nan, np.nan])
 
         all_probs = [mkt, elo_p, dc_p, xgb_p]
 
         # Consensus: average across sources that have valid values
         valid = [p for p in all_probs if not np.any(np.isnan(p))]
+        n_sources = len(valid)
         if valid:
             avg = np.mean(valid, axis=0)
             pick_idx = int(np.argmax(avg))
@@ -416,7 +565,8 @@ def compute_all_predictions(fixtures, fx_features, elo_model, dc, xgb_model, act
             "home_team": fx["home_team"], "away_team": fx["away_team"],
             "date": fx["date"], "league": fx["league"],
             "probs": {"Market": mkt, "Elo": elo_p, "Dixon-Coles": dc_p, "XGBoost": xgb_p},
-            "consensus": {"pick": pick_code, "avg_pct": avg_pct, "unanimous": unanimous},
+            "consensus": {"pick": pick_code, "avg_pct": avg_pct, "unanimous": unanimous,
+                          "n_sources": n_sources, "no_market": is_tsdb},
         }
 
         # ── Secondary markets from Dixon-Coles scoreline grid ──
@@ -527,13 +677,19 @@ def render_terminal(predictions, demo_mode):
             date_str = m["date"].strftime("%Y-%m-%d")
             print(f"\n  {title:<48} {date_str}")
 
+            no_mkt = m["consensus"].get("no_market", False)
+            if no_mkt:
+                print("    [Schedule from backup source — no market odds available]")
+
             # Consensus headline
             pick_text = _consensus_pick(m)
             pct = m["consensus"]["avg_pct"] * 100
             agree = _agreement_text(m)
             print(f"    >>> Model favors: {pick_text} — {pct:.1f}% avg ({agree})")
 
-            for src in SOURCE_LABELS:
+            active_sources = [s for s in SOURCE_LABELS
+                              if not (no_mkt and s in ("Market", "XGBoost"))]
+            for src in active_sources:
                 p = m["probs"][src]
                 h, d, a = _fmt_pct(p[0]), _fmt_pct(p[1]), _fmt_pct(p[2])
                 print(f"    {src:<14} Home {h:>6}   Draw {d:>6}   Away {a:>6}")
@@ -770,9 +926,16 @@ def render_html(predictions, demo_mode, as_of_date):
             at = html_mod.escape(m["away_team"])
             ds = m["date"].strftime("%Y-%m-%d")
 
+            no_mkt = m["consensus"].get("no_market", False)
             body.append('<div class="card">')
             body.append(f'<div class="card-title">{ht} vs {at}</div>')
             body.append(f'<div class="card-date">{ds}</div>')
+
+            if no_mkt:
+                body.append(
+                    '<div class="demo-banner" style="margin-bottom:10px">'
+                    'Schedule from backup source &mdash; no market odds available for this match'
+                    '</div>')
 
             # Consensus badge
             pick = html_mod.escape(_consensus_pick(m))
@@ -783,7 +946,9 @@ def render_html(predictions, demo_mode, as_of_date):
                 f' &mdash; {pct:.1f}% avg '
                 f'<span class="agree-tag">({agree})</span></div>')
 
-            for src in SOURCE_LABELS:
+            active_sources = [s for s in SOURCE_LABELS
+                              if not (no_mkt and s in ("Market", "XGBoost"))]
+            for src in active_sources:
                 p = m["probs"][src]
                 border_cls = ""
                 if has_actual and not np.any(np.isnan(p)):
@@ -930,21 +1095,38 @@ def main():
     else:
         print("\nFetching upcoming fixtures from football-data.co.uk...")
         fixtures = fetch_fixtures()
+        if "_from_tsdb" not in fixtures.columns and not fixtures.empty:
+            fixtures["_from_tsdb"] = False
+
+        # Check which leagues are missing from football-data.co.uk
+        fd_leagues = set(fixtures["league"].unique()) if not fixtures.empty else set()
+        missing_leagues = sorted(set(LEAGUE_NAMES) - fd_leagues)
+
+        if missing_leagues:
+            print(f"  football-data.co.uk missing: {', '.join(missing_leagues)}")
+            print(f"  Checking TheSportsDB backup for {len(missing_leagues)} league(s)...")
+            tsdb_fx = fetch_tsdb_fixtures(missing_leagues)
+            if not tsdb_fx.empty:
+                print(f"  TheSportsDB found {len(tsdb_fx)} fixture(s) across: "
+                      f"{', '.join(sorted(tsdb_fx['league'].unique()))}")
+                fixtures = pd.concat([fixtures, tsdb_fx], ignore_index=True)
+            else:
+                print("  TheSportsDB returned no upcoming fixtures either.")
+
         if fixtures.empty:
             print(f"\nNo upcoming fixtures found for the {len(TARGET_DIVS)} target leagues.")
             print("This is expected during the off-season (June-August).")
             print("Tip: use --as-of YYYY-MM-DD to demo against a past matchday.")
-            print("\nDivisions currently in the fixtures file:")
-            resp = requests.get(FIXTURES_URL, headers={"User-Agent": _BROWSER_UA}, timeout=30)
-            if resp.ok:
-                all_fx = pd.read_csv(io.BytesIO(resp.content), encoding="utf-8-sig")
-                if not all_fx.empty:
-                    for div in sorted(all_fx["Div"].unique()):
-                        print(f"  {div}: {len(all_fx[all_fx['Div'] == div])} fixtures")
-                else:
-                    print("  (none — fixtures file is empty)")
             return
-        print(f"Found {len(fixtures)} upcoming fixtures across: "
+
+        n_tsdb = int(fixtures["_from_tsdb"].sum()) if "_from_tsdb" in fixtures.columns else 0
+        n_fd = len(fixtures) - n_tsdb
+        parts = []
+        if n_fd:
+            parts.append(f"{n_fd} from football-data.co.uk")
+        if n_tsdb:
+            parts.append(f"{n_tsdb} from TheSportsDB (no odds)")
+        print(f"Found {len(fixtures)} upcoming fixtures ({', '.join(parts)}) across: "
               f"{', '.join(sorted(fixtures['league'].unique()))}")
 
     # Load historical data, cut off strictly before fixture date
