@@ -479,15 +479,24 @@ def _best_secondary_pick(m):
 
     Returns dict with keys: market, pick_text, prob, tag.
     """
+    candidates = _secondary_candidates(m)
+    if not candidates:
+        return None
+    best = max(candidates, key=lambda x: x[2])
+    return {"market": best[0], "pick_text": best[1], "prob": best[2], "tag": best[3]}
+
+
+def _secondary_candidates(m):
+    """Return list of (market, pick_text, prob, tag) for all secondary markets."""
     candidates = []
 
     if "over_under" in m:
         ou = m["over_under"]
         p_over, p_under = ou["model_over"], ou["model_under"]
         if p_over >= p_under:
-            candidates.append(("O/U", f"Over 2.5 goals", p_over, ""))
+            candidates.append(("O/U", "Over 2.5 goals", p_over, ""))
         else:
-            candidates.append(("O/U", f"Under 2.5 goals", p_under, ""))
+            candidates.append(("O/U", "Under 2.5 goals", p_under, ""))
 
     if "btts" in m:
         b = m["btts"]
@@ -505,8 +514,23 @@ def _best_secondary_pick(m):
         else:
             candidates.append(("AH", f"{m['away_team']} covers AH {line_str}", ah["home_lose"], ""))
 
-    if not candidates:
-        return None
+    return candidates
+
+
+def _best_overall_pick(m):
+    """Return the single highest-confidence pick across ALL markets (H/D/A + O/U + BTTS + AH).
+
+    Returns dict with keys: market, pick_text, prob, tag.
+    """
+    # H/D/A consensus pick
+    candidates = []
+    con = m["consensus"]
+    pct = con["avg_pct"]
+    candidates.append(("1X2", _consensus_pick(m), pct, ""))
+
+    # Secondary markets
+    candidates.extend(_secondary_candidates(m))
+
     best = max(candidates, key=lambda x: x[2])
     return {"market": best[0], "pick_text": best[1], "prob": best[2], "tag": best[3]}
 
@@ -772,7 +796,14 @@ h1 { font-size: 1.4rem; margin-bottom: 4px; }
 .top-picks .pick-matchup { color: #666; }
 .top-picks .pick-pct { font-weight: 600; }
 .top-picks .pick-tag { font-size: 0.75rem; color: #888; }
-.top-picks .pick-date { font-size: 0.75rem; color: #999; }
+.top-picks .market-tag { font-size: 0.7rem; font-weight: 600; color: #fff;
+            border-radius: 3px; padding: 1px 5px; margin-right: 4px; }
+.top-picks .mt-1x2 { background: #4338ca; }
+.top-picks .mt-ou { background: #f59e0b; }
+.top-picks .mt-btts { background: #22c55e; }
+.top-picks .mt-ah { background: #3b82f6; }
+.top-picks .caveat { font-size: 0.82rem; color: #666; margin-bottom: 8px; line-height: 1.4; }
+.top-picks .section-note { font-size: 0.82rem; color: #666; margin-bottom: 8px; line-height: 1.4; }
 /* ── League sections ── */
 .league-section { margin-bottom: 16px; }
 .league-hdr { font-size: 0.88rem; font-weight: 600; color: #555; padding: 8px 12px;
@@ -1029,12 +1060,48 @@ def render_html(predictions, demo_mode, as_of_date):
                     f'{label} <span style="opacity:0.6">({n})</span></div>')
     body.append('</div>')
 
-    # Top picks (global, date-filtered via JS)
-    ranked = sorted(predictions, key=lambda m: m["consensus"]["avg_pct"], reverse=True)
+    # ── Primary list: Best Pick Every Match (All Markets) ──
+    all_market_picks = []
+    for m in predictions:
+        best = _best_overall_pick(m)
+        all_market_picks.append((m, best))
+    all_market_picks.sort(key=lambda x: x[1]["prob"], reverse=True)
+
     body.append('<div class="top-picks">')
-    body.append('<div class="top-picks-hdr">Top Picks</div>')
+    body.append('<div class="top-picks-hdr">Best Pick Every Match (All Markets)</div>')
+    body.append(
+        '<p class="caveat">A full 8-season backtest of this exact approach: raises hit rate '
+        'to ~58% (vs ~51% for match-result-only picks), but displayed confidence runs ~7 '
+        'points hot on average (stated ~65%, actual ~58%). About 83% of entries here are '
+        'O/U or BTTS &mdash; single-model estimates, not full 4-source consensus. BTTS '
+        'specifically has never been checked against real bookmaker odds.</p>')
     body.append('<ol>')
-    for m in ranked:
+    for m, best in all_market_picks:
+        dk = m["date"].strftime("%Y-%m-%d")
+        market = html_mod.escape(best["market"])
+        market_cls = {"1X2": "1x2", "O/U": "ou", "BTTS": "btts", "AH": "ah"}.get(best["market"], "1x2")
+        pick_text = html_mod.escape(best["pick_text"])
+        matchup = html_mod.escape(f"{m['home_team']} v {m['away_team']}")
+        pct = best["prob"] * 100
+        unvalidated = ' <span class="pick-tag">(unvalidated)</span>' if best["tag"] else ""
+        body.append(
+            f'<li class="top-pick-item" data-date="{dk}">'
+            f'<span class="market-tag mt-{market_cls}">{market}</span>'
+            f'<span class="pick-name">{pick_text}</span> '
+            f'<span class="pick-matchup">({matchup})</span> '
+            f'&mdash; <span class="pick-pct">{pct:.1f}%</span>'
+            f'{unvalidated}</li>')
+    body.append('</ol></div>')
+
+    # ── Secondary list: Best-Calibrated Picks (Match Result Only) ──
+    ranked_hda = sorted(predictions, key=lambda m: m["consensus"]["avg_pct"], reverse=True)
+    body.append('<div class="top-picks">')
+    body.append('<div class="top-picks-hdr">Best-Calibrated Picks (Match Result Only)</div>')
+    body.append(
+        '<p class="section-note">This list alone is well-calibrated in backtesting '
+        '(states ~50%, actual ~51%) &mdash; the safer, more honest-confidence view.</p>')
+    body.append('<ol>')
+    for m in ranked_hda:
         dk = m["date"].strftime("%Y-%m-%d")
         pick = html_mod.escape(_consensus_pick(m))
         matchup = html_mod.escape(f"{m['home_team']} v {m['away_team']}")
@@ -1042,6 +1109,7 @@ def render_html(predictions, demo_mode, as_of_date):
         tag = "unanimous" if m["consensus"]["unanimous"] else "split"
         body.append(
             f'<li class="top-pick-item" data-date="{dk}">'
+            f'<span class="market-tag mt-1x2">1X2</span>'
             f'<span class="pick-name">{pick}</span> '
             f'<span class="pick-matchup">({matchup})</span> '
             f'&mdash; <span class="pick-pct">{pct:.1f}%</span> '
