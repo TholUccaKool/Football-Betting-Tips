@@ -740,46 +740,77 @@ def render_terminal(predictions, demo_mode):
 _HTML_CSS = """\
 * { margin: 0; padding: 0; box-sizing: border-box; }
 body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
-       background: #f5f5f5; color: #1a1a1a; max-width: 820px; margin: 0 auto; padding: 24px 16px; }
-h1 { font-size: 1.5rem; margin-bottom: 4px; }
-h2 { font-size: 1.2rem; margin: 24px 0 10px 0; }
-.meta { color: #666; font-size: 0.85rem; margin-bottom: 16px; }
+       background: #f5f5f5; color: #1a1a1a; max-width: 820px; margin: 0 auto; padding: 16px 12px; }
+h1 { font-size: 1.4rem; margin-bottom: 4px; }
+.meta { color: #666; font-size: 0.82rem; margin-bottom: 12px; }
 .demo-banner { background: #fff3cd; border: 1px solid #ffc107; border-radius: 6px;
-               padding: 10px 14px; margin-bottom: 20px; font-size: 0.9rem; }
+               padding: 8px 12px; margin-bottom: 14px; font-size: 0.85rem; }
 .about-box { background: #f0f4ff; border: 1px solid #c7d2fe; border-radius: 8px;
-             padding: 14px 18px; margin-bottom: 20px; font-size: 0.88rem; line-height: 1.5; }
+             padding: 12px 16px; margin-bottom: 16px; font-size: 0.84rem; line-height: 1.45; }
 .about-box strong { color: #4338ca; }
+/* ── Date tabs ── */
+.date-tabs { display: flex; gap: 6px; overflow-x: auto; padding: 4px 0 12px 0;
+             -webkit-overflow-scrolling: touch; scrollbar-width: none; position: sticky;
+             top: 0; background: #f5f5f5; z-index: 10; }
+.date-tabs::-webkit-scrollbar { display: none; }
+.date-tab { flex-shrink: 0; padding: 6px 14px; border-radius: 20px; border: 1px solid #ddd;
+            background: #fff; font-size: 0.82rem; font-weight: 500; color: #555; cursor: pointer;
+            transition: all 0.15s; white-space: nowrap; }
+.date-tab:hover { border-color: #999; }
+.date-tab.active { background: #1a1a1a; color: #fff; border-color: #1a1a1a; }
+.date-group { display: none; }
+.date-group.active { display: block; }
+/* ── Top picks ── */
 .top-picks { background: #fff; border-radius: 8px; border: 1px solid #ddd;
-             padding: 14px 18px; margin-bottom: 24px; }
-.top-picks ol { padding-left: 24px; }
-.top-picks li { padding: 3px 0; font-size: 0.9rem; }
+             padding: 12px 16px; margin-bottom: 16px; }
+.top-picks-hdr { font-size: 0.92rem; font-weight: 600; margin-bottom: 8px; }
+.top-picks ol { padding-left: 22px; }
+.top-picks li { padding: 2px 0; font-size: 0.85rem; }
 .top-picks .pick-name { font-weight: 600; }
 .top-picks .pick-matchup { color: #666; }
-.top-picks .pick-tag { font-size: 0.78rem; color: #888; }
-.league-hdr { font-size: 1.15rem; font-weight: 600; margin: 28px 0 12px 0;
-              padding-bottom: 6px; border-bottom: 2px solid #333; }
-.card { background: #fff; border-radius: 8px; border: 1px solid #ddd;
-        padding: 16px 18px; margin-bottom: 14px; }
-.card-title { font-size: 1.05rem; font-weight: 600; margin-bottom: 2px; }
-.card-date { font-size: 0.82rem; color: #888; margin-bottom: 8px; }
+.top-picks .pick-pct { font-weight: 600; }
+.top-picks .pick-tag { font-size: 0.75rem; color: #888; }
+.top-picks .pick-date { font-size: 0.75rem; color: #999; }
+/* ── League sections ── */
+.league-section { margin-bottom: 16px; }
+.league-hdr { font-size: 0.88rem; font-weight: 600; color: #555; padding: 8px 12px;
+              background: #e9ecef; border-radius: 6px 6px 0 0; }
+/* ── Match cards (compact) ── */
+.match-card { background: #fff; border: 1px solid #ddd; border-top: none;
+              padding: 10px 14px; cursor: pointer; transition: background 0.1s; }
+.match-card:last-child { border-radius: 0 0 6px 6px; }
+.league-section .match-card:first-of-type { border-top: 1px solid #ddd; }
+.match-card:hover { background: #fafafa; }
+.match-summary { display: flex; align-items: center; gap: 10px; }
+.match-teams { flex: 1; font-size: 0.92rem; font-weight: 600; }
+.match-time { font-size: 0.78rem; color: #888; flex-shrink: 0; min-width: 44px; text-align: right; }
+.match-pick { font-size: 0.78rem; color: #4338ca; flex-shrink: 0; max-width: 180px;
+              text-align: right; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.match-pick strong { font-weight: 600; }
+.backup-tag { display: inline-block; font-size: 0.65rem; font-weight: 600; color: #b45309;
+              background: #fef3c7; border: 1px solid #fcd34d; border-radius: 3px;
+              padding: 0 4px; margin-left: 6px; vertical-align: middle; }
+.expand-icon { font-size: 0.7rem; color: #bbb; flex-shrink: 0; transition: transform 0.2s; }
+.match-card.open .expand-icon { transform: rotate(180deg); }
+/* ── Detail panel (hidden by default) ── */
+.match-detail { display: none; padding-top: 10px; border-top: 1px solid #eee; margin-top: 10px; }
+.match-card.open .match-detail { display: block; }
 .consensus-badge { background: #eef2ff; border: 1px solid #c7d2fe; border-radius: 6px;
-                   padding: 8px 12px; margin-bottom: 12px; font-size: 0.88rem; }
+                   padding: 7px 10px; margin-bottom: 10px; font-size: 0.84rem; }
 .consensus-badge strong { color: #4338ca; }
-.consensus-badge .agree-tag { font-size: 0.8rem; color: #666; }
-.source-row { display: flex; align-items: center; margin-bottom: 6px; }
-.source-label { width: 100px; font-size: 0.82rem; font-weight: 500; color: #555; flex-shrink: 0; }
-.bar-wrap { flex: 1; display: flex; height: 22px; border-radius: 4px; overflow: hidden; }
+.consensus-badge .agree-tag { font-size: 0.78rem; color: #666; }
+.source-row { display: flex; align-items: center; margin-bottom: 5px; }
+.source-label { width: 90px; font-size: 0.78rem; font-weight: 500; color: #555; flex-shrink: 0; }
+.bar-wrap { flex: 1; display: flex; height: 20px; border-radius: 4px; overflow: hidden; }
 .seg { display: flex; align-items: center; justify-content: center;
-       font-size: 0.72rem; font-weight: 600; color: #fff; min-width: 28px; }
+       font-size: 0.68rem; font-weight: 600; color: #fff; min-width: 26px; }
 .seg-home { background: #3b82f6; }
 .seg-draw { background: #9ca3af; }
 .seg-away { background: #ef4444; }
-.secondary-markets { margin-top: 12px; padding-top: 10px; border-top: 1px solid #eee; }
-.secondary-markets h4 { font-size: 0.82rem; font-weight: 600; color: #555;
-                         margin: 8px 0 4px 0; }
+.secondary-markets { margin-top: 10px; padding-top: 8px; border-top: 1px solid #eee; }
+.secondary-markets h4 { font-size: 0.78rem; font-weight: 600; color: #555; margin: 6px 0 3px 0; }
 .secondary-markets h4:first-child { margin-top: 0; }
-.two-bar { display: flex; height: 22px; border-radius: 4px; overflow: hidden;
-           margin-bottom: 2px; }
+.two-bar { display: flex; height: 20px; border-radius: 4px; overflow: hidden; margin-bottom: 2px; }
 .two-bar .seg-over { background: #f59e0b; }
 .two-bar .seg-under { background: #6366f1; }
 .two-bar .seg-yes { background: #22c55e; }
@@ -787,32 +818,41 @@ h2 { font-size: 1.2rem; margin: 24px 0 10px 0; }
 .two-bar .seg-cover { background: #3b82f6; }
 .two-bar .seg-push { background: #9ca3af; }
 .two-bar .seg-lose { background: #ef4444; }
-.bar-label { font-size: 0.72rem; color: #888; margin-bottom: 6px; }
-.score-list { display: flex; flex-wrap: wrap; gap: 6px; margin: 4px 0; }
+.bar-label { font-size: 0.7rem; color: #888; margin-bottom: 4px; }
+.score-list { display: flex; flex-wrap: wrap; gap: 5px; margin: 3px 0; }
 .score-chip { background: #f3f4f6; border: 1px solid #e5e7eb; border-radius: 4px;
-              padding: 2px 8px; font-size: 0.78rem; font-weight: 500; }
+              padding: 2px 7px; font-size: 0.75rem; font-weight: 500; }
 .score-chip .pct { color: #666; font-weight: 400; }
-.result-line { margin-top: 10px; padding-top: 8px; border-top: 1px solid #eee;
-               font-size: 0.88rem; font-weight: 500; }
+.result-line { margin-top: 8px; padding-top: 7px; border-top: 1px solid #eee;
+               font-size: 0.84rem; font-weight: 500; }
 .correct { border-left: 4px solid #22c55e; }
 .incorrect { border-left: 4px solid #ef4444; }
-.footer { margin-top: 32px; padding-top: 16px; border-top: 1px solid #ccc;
-          font-size: 0.8rem; color: #888; }
-.other-markets { background: #fff; border-radius: 8px; border: 1px solid #ddd;
-                 padding: 14px 18px; margin-bottom: 24px; }
-.other-markets ol { padding-left: 24px; }
-.other-markets li { padding: 3px 0; font-size: 0.9rem; }
-.other-markets .pick-name { font-weight: 600; }
-.other-markets .pick-matchup { color: #666; }
-.other-markets .pick-tag { font-size: 0.78rem; color: #888; }
-.other-markets .market-tag { font-size: 0.78rem; font-weight: 600; color: #fff;
-                             border-radius: 3px; padding: 1px 5px; margin-right: 4px; }
-.other-markets .market-tag-ou { background: #f59e0b; }
-.other-markets .market-tag-btts { background: #22c55e; }
-.other-markets .market-tag-ah { background: #3b82f6; }
-.other-markets .caveat { font-size: 0.82rem; color: #888; margin-bottom: 10px;
-                         line-height: 1.4; }
-.unvalidated { font-size: 0.75rem; color: #b45309; font-style: italic; }
+.footer { margin-top: 24px; padding-top: 14px; border-top: 1px solid #ccc;
+          font-size: 0.78rem; color: #888; }
+.unvalidated { font-size: 0.72rem; color: #b45309; font-style: italic; }
+"""
+
+_HTML_JS = """\
+function switchTab(dateKey) {
+  document.querySelectorAll('.date-tab').forEach(t => t.classList.toggle('active', t.dataset.date === dateKey));
+  document.querySelectorAll('.date-group').forEach(g => g.classList.toggle('active', g.id === 'day-' + dateKey));
+  // Update top picks visibility
+  document.querySelectorAll('.top-pick-item').forEach(li => {
+    li.style.display = (!li.dataset.date || li.dataset.date === dateKey) ? '' : 'none';
+  });
+  // Re-number visible picks
+  let n = 0;
+  document.querySelectorAll('.top-pick-item').forEach(li => {
+    if (li.style.display !== 'none') { n++; li.setAttribute('value', n); }
+  });
+}
+function toggleCard(el) {
+  el.closest('.match-card').classList.toggle('open');
+}
+document.addEventListener('DOMContentLoaded', function() {
+  var first = document.querySelector('.date-tab');
+  if (first) switchTab(first.dataset.date);
+});
 """
 
 
@@ -833,6 +873,104 @@ def _bar_segments(probs):
     return "".join(parts)
 
 
+def _render_match_detail(m, body):
+    """Append expanded detail HTML for a single match card."""
+    has_actual = "actual" in m
+    no_mkt = m["consensus"].get("no_market", False)
+
+    pick = html_mod.escape(_consensus_pick(m))
+    pct = m["consensus"]["avg_pct"] * 100
+    agree = html_mod.escape(_agreement_text(m))
+    body.append(
+        f'<div class="consensus-badge">Model favors: <strong>{pick}</strong>'
+        f' &mdash; {pct:.1f}% avg '
+        f'<span class="agree-tag">({agree})</span></div>')
+
+    active_sources = [s for s in SOURCE_LABELS
+                      if not (no_mkt and s in ("Market", "XGBoost"))]
+    for src in active_sources:
+        p = m["probs"][src]
+        border_cls = ""
+        if has_actual and not np.any(np.isnan(p)):
+            pred = OUTCOME_MAP[int(np.argmax(p))]
+            border_cls = " correct" if pred == m["actual"]["result"] else " incorrect"
+        body.append(f'<div class="source-row{border_cls}">')
+        body.append(f'<div class="source-label">{html_mod.escape(src)}</div>')
+        body.append(f'<div class="bar-wrap">{_bar_segments(p)}</div>')
+        body.append("</div>")
+
+    has_secondary = any(k in m for k in ("over_under", "btts", "correct_score", "asian_handicap"))
+    if has_secondary:
+        body.append('<div class="secondary-markets">')
+        if "over_under" in m:
+            ou = m["over_under"]
+            body.append('<h4>Over/Under 2.5 Goals</h4>')
+            p_o, p_u = ou["model_over"], ou["model_under"]
+            w_o, w_u = max(p_o * 100, 4), max(p_u * 100, 4)
+            body.append(
+                f'<div class="two-bar">'
+                f'<div class="seg seg-over" style="width:{w_o:.1f}%">O {p_o*100:.0f}%</div>'
+                f'<div class="seg seg-under" style="width:{w_u:.1f}%">U {p_u*100:.0f}%</div>'
+                f'</div>')
+            if ou["market"]:
+                body.append(
+                    f'<div class="bar-label">Market: Over {ou["market"]["over"]*100:.1f}%'
+                    f' / Under {ou["market"]["under"]*100:.1f}%</div>')
+            else:
+                body.append('<div class="bar-label">Model only</div>')
+        if "btts" in m:
+            b = m["btts"]
+            body.append('<h4>Both Teams to Score</h4>')
+            w_y, w_n = max(b["yes"] * 100, 4), max(b["no"] * 100, 4)
+            body.append(
+                f'<div class="two-bar">'
+                f'<div class="seg seg-yes" style="width:{w_y:.1f}%">Yes {b["yes"]*100:.0f}%</div>'
+                f'<div class="seg seg-no" style="width:{w_n:.1f}%">No {b["no"]*100:.0f}%</div>'
+                f'</div>')
+            body.append('<div class="bar-label">Model only &mdash; no BTTS odds in data source</div>')
+        if "correct_score" in m:
+            body.append('<h4>Most Likely Scores</h4>')
+            body.append('<div class="score-list">')
+            for score, prob in m["correct_score"]:
+                body.append(
+                    f'<div class="score-chip">{html_mod.escape(score)}'
+                    f' <span class="pct">{prob*100:.1f}%</span></div>')
+            body.append('</div>')
+        if "asian_handicap" in m:
+            ah = m["asian_handicap"]
+            line = ah["line"]
+            line_str = f"{line:+.2g}" if line != 0 else "0"
+            body.append(f'<h4>Asian Handicap ({html_mod.escape(line_str)})</h4>')
+            w_c = max(ah["home_cover"] * 100, 4)
+            w_p = max(ah["push"] * 100, 2) if ah["push"] > 0.005 else 0
+            w_l = max(ah["home_lose"] * 100, 4)
+            seg_parts = (
+                f'<div class="seg seg-cover" style="width:{w_c:.1f}%">'
+                f'Cover {ah["home_cover"]*100:.0f}%</div>')
+            if w_p > 0:
+                seg_parts += (
+                    f'<div class="seg seg-push" style="width:{w_p:.1f}%">'
+                    f'Push {ah["push"]*100:.0f}%</div>')
+            seg_parts += (
+                f'<div class="seg seg-lose" style="width:{w_l:.1f}%">'
+                f'Lose {ah["home_lose"]*100:.0f}%</div>')
+            body.append(f'<div class="two-bar">{seg_parts}</div>')
+            if ah["market"]:
+                body.append(
+                    f'<div class="bar-label">Market: Home {ah["market"]["home_cover"]*100:.1f}%'
+                    f' / Away {ah["market"]["away_cover"]*100:.1f}%</div>')
+            else:
+                body.append('<div class="bar-label">Model only</div>')
+        body.append('</div>')
+
+    if has_actual:
+        act = m["actual"]
+        rw = OUTCOME_WORDS[act["result"]]
+        body.append(
+            f'<div class="result-line">Result: {act["home_goals"]}-{act["away_goals"]}'
+            f' ({rw})</div>')
+
+
 def render_html(predictions, demo_mode, as_of_date):
     """Write a self-contained HTML report and return the output path."""
     out_dir = ROOT_DIR / "output"
@@ -840,212 +978,128 @@ def render_html(predictions, demo_mode, as_of_date):
     date_label = as_of_date if demo_mode else datetime.now().strftime("%Y-%m-%d")
     out_path = out_dir / f"predictions_{date_label}.html"
 
-    by_league = {}
+    # Group by date → league → matches
+    by_date = {}
     for m in predictions:
-        by_league.setdefault(m["league"], []).append(m)
+        dk = m["date"].strftime("%Y-%m-%d")
+        by_date.setdefault(dk, []).append(m)
+    sorted_dates = sorted(by_date.keys())
+
+    # Build date tab labels
+    today = datetime.now().date()
+    def _tab_label(ds):
+        d = datetime.strptime(ds, "%Y-%m-%d").date()
+        if d == today:
+            return "Today"
+        if d == today + timedelta(days=1):
+            return "Tomorrow"
+        return d.strftime("%a %d %b")
 
     body = []
 
     # Header
-    body.append("<h1>Fixture Probability Comparison</h1>")
-    body.append(f'<p class="meta">Generated {datetime.now().strftime("%Y-%m-%d %H:%M")}</p>')
+    body.append("<h1>Match Predictions</h1>")
+    body.append(f'<p class="meta">Generated {datetime.now().strftime("%Y-%m-%d %H:%M")} '
+                f'&middot; {len(predictions)} matches across {len(sorted_dates)} day(s)</p>')
     if demo_mode:
         body.append(
             f'<div class="demo-banner">[DEMO MODE] Using historical date '
-            f'{html_mod.escape(as_of_date)} as a stand-in for upcoming fixtures '
-            f'&mdash; NOT live data</div>')
+            f'{html_mod.escape(as_of_date)} as stand-in fixtures &mdash; NOT live data</div>')
 
-    # About box (HTML only — for people opening the shared link cold)
+    # About box
     body.append(
         '<div class="about-box">'
         '<strong>What is this?</strong> '
         'Automated football match predictions for the top European leagues, '
         'built from three statistical models (Elo ratings, Dixon-Coles, and XGBoost) '
         'trained on eight seasons of historical data. '
-        'Updates automatically three times a week (Mon/Tue/Fri). '
-        '<strong>Important:</strong> these are model estimates of what\'s most likely '
-        'to happen, not betting advice. After extensive testing against real bookmaker '
-        'closing lines, none of these models consistently beat the market &mdash; '
-        'treat this as an informed second opinion, not a way to make money.'
+        'Updates Mon/Tue/Fri. Click any match to expand full detail. '
+        '<strong>Important:</strong> these are model estimates, not betting advice. '
+        'None of these models consistently beat the market.'
         '</div>')
 
-    # Top picks
+    # Date tabs
+    body.append('<div class="date-tabs">')
+    for ds in sorted_dates:
+        label = html_mod.escape(_tab_label(ds))
+        n = len(by_date[ds])
+        body.append(f'<div class="date-tab" data-date="{ds}" onclick="switchTab(\'{ds}\')">'
+                    f'{label} <span style="opacity:0.6">({n})</span></div>')
+    body.append('</div>')
+
+    # Top picks (global, date-filtered via JS)
     ranked = sorted(predictions, key=lambda m: m["consensus"]["avg_pct"], reverse=True)
-    body.append('<h2>Top Picks This Round</h2>')
-    body.append('<div class="top-picks"><ol>')
+    body.append('<div class="top-picks">')
+    body.append('<div class="top-picks-hdr">Top Picks</div>')
+    body.append('<ol>')
     for m in ranked:
+        dk = m["date"].strftime("%Y-%m-%d")
         pick = html_mod.escape(_consensus_pick(m))
         matchup = html_mod.escape(f"{m['home_team']} v {m['away_team']}")
         pct = m["consensus"]["avg_pct"] * 100
         tag = "unanimous" if m["consensus"]["unanimous"] else "split"
         body.append(
-            f'<li><span class="pick-name">{pick}</span> '
+            f'<li class="top-pick-item" data-date="{dk}">'
+            f'<span class="pick-name">{pick}</span> '
             f'<span class="pick-matchup">({matchup})</span> '
-            f'&mdash; {pct:.1f}% '
+            f'&mdash; <span class="pick-pct">{pct:.1f}%</span> '
             f'<span class="pick-tag">[{tag}]</span></li>')
     body.append('</ol></div>')
 
-    # Other Markets section
-    secondary_picks = []
-    for m in predictions:
-        pick = _best_secondary_pick(m)
-        if pick:
-            secondary_picks.append((m, pick))
-    if secondary_picks:
-        secondary_picks.sort(key=lambda x: x[1]["prob"], reverse=True)
-        body.append('<h2>Other Markets This Round (O/U, BTTS, Asian Handicap)</h2>')
-        body.append('<div class="other-markets">')
-        body.append(
-            '<p class="caveat">These often show higher confidence than the H/D/A picks '
-            'above, but a full 8-season backtest found they run ~7 percentage points '
-            'overconfident on average (stated ~65%, actual hit rate ~58%) &mdash; read '
-            'these as directionally useful, not literally accurate. BTTS specifically '
-            'has never been checked against real bookmaker odds at all.</p>')
-        body.append('<ol>')
-        for m, pick in secondary_picks:
-            market = html_mod.escape(pick["market"])
-            market_cls = {"O/U": "ou", "BTTS": "btts", "AH": "ah"}.get(pick["market"], "ou")
-            pick_text = html_mod.escape(pick["pick_text"])
-            matchup = html_mod.escape(f"{m['home_team']} v {m['away_team']}")
-            pct = pick["prob"] * 100
-            unvalidated = (' <span class="unvalidated">(unvalidated)</span>'
-                           if pick["tag"] else "")
-            body.append(
-                f'<li><span class="market-tag market-tag-{market_cls}">{market}</span>'
-                f'<span class="pick-name">{pick_text}</span> '
-                f'<span class="pick-matchup">({matchup})</span> '
-                f'&mdash; {pct:.1f}%{unvalidated}</li>')
-        body.append('</ol></div>')
+    # Date groups
+    for ds in sorted_dates:
+        day_matches = by_date[ds]
+        body.append(f'<div class="date-group" id="day-{ds}">')
 
-    # Per-league cards
-    for league in sorted(by_league):
-        body.append(f'<div class="league-hdr">{html_mod.escape(league)}</div>')
-        for m in by_league[league]:
-            has_actual = "actual" in m
-            ht = html_mod.escape(m["home_team"])
-            at = html_mod.escape(m["away_team"])
-            ds = m["date"].strftime("%Y-%m-%d")
+        # Group by league within this date
+        day_by_league = {}
+        for m in day_matches:
+            day_by_league.setdefault(m["league"], []).append(m)
 
-            no_mkt = m["consensus"].get("no_market", False)
-            body.append('<div class="card">')
-            body.append(f'<div class="card-title">{ht} vs {at}</div>')
-            body.append(f'<div class="card-date">{ds}</div>')
+        for league in sorted(day_by_league):
+            body.append('<div class="league-section">')
+            body.append(f'<div class="league-hdr">{html_mod.escape(league)}</div>')
 
-            if no_mkt:
-                body.append(
-                    '<div class="demo-banner" style="margin-bottom:10px">'
-                    'Schedule from backup source &mdash; no market odds available for this match'
-                    '</div>')
+            for m in day_by_league[league]:
+                ht = html_mod.escape(m["home_team"])
+                at = html_mod.escape(m["away_team"])
+                no_mkt = m["consensus"].get("no_market", False)
+                kick_time = m["date"].strftime("%H:%M")
+                pick_text = html_mod.escape(_consensus_pick(m))
+                pct = m["consensus"]["avg_pct"] * 100
 
-            # Consensus badge
-            pick = html_mod.escape(_consensus_pick(m))
-            pct = m["consensus"]["avg_pct"] * 100
-            agree = html_mod.escape(_agreement_text(m))
-            body.append(
-                f'<div class="consensus-badge">Model favors: <strong>{pick}</strong>'
-                f' &mdash; {pct:.1f}% avg '
-                f'<span class="agree-tag">({agree})</span></div>')
-
-            active_sources = [s for s in SOURCE_LABELS
-                              if not (no_mkt and s in ("Market", "XGBoost"))]
-            for src in active_sources:
-                p = m["probs"][src]
-                border_cls = ""
-                if has_actual and not np.any(np.isnan(p)):
-                    pred = OUTCOME_MAP[int(np.argmax(p))]
-                    border_cls = " correct" if pred == m["actual"]["result"] else " incorrect"
-                body.append(f'<div class="source-row{border_cls}">')
-                body.append(f'<div class="source-label">{html_mod.escape(src)}</div>')
-                body.append(f'<div class="bar-wrap">{_bar_segments(p)}</div>')
-                body.append("</div>")
-
-            # ── Secondary markets ──
-            has_secondary = any(k in m for k in ("over_under", "btts", "correct_score", "asian_handicap"))
-            if has_secondary:
-                body.append('<div class="secondary-markets">')
-
-                if "over_under" in m:
-                    ou = m["over_under"]
-                    body.append('<h4>Over/Under 2.5 Goals</h4>')
-                    p_o, p_u = ou["model_over"], ou["model_under"]
-                    w_o, w_u = max(p_o * 100, 4), max(p_u * 100, 4)
-                    body.append(
-                        f'<div class="two-bar">'
-                        f'<div class="seg seg-over" style="width:{w_o:.1f}%">O {p_o*100:.0f}%</div>'
-                        f'<div class="seg seg-under" style="width:{w_u:.1f}%">U {p_u*100:.0f}%</div>'
-                        f'</div>')
-                    if ou["market"]:
-                        body.append(
-                            f'<div class="bar-label">Market: Over {ou["market"]["over"]*100:.1f}%'
-                            f' / Under {ou["market"]["under"]*100:.1f}%</div>')
-                    else:
-                        body.append('<div class="bar-label">Model only</div>')
-
-                if "btts" in m:
-                    b = m["btts"]
-                    body.append('<h4>Both Teams to Score</h4>')
-                    w_y, w_n = max(b["yes"] * 100, 4), max(b["no"] * 100, 4)
-                    body.append(
-                        f'<div class="two-bar">'
-                        f'<div class="seg seg-yes" style="width:{w_y:.1f}%">Yes {b["yes"]*100:.0f}%</div>'
-                        f'<div class="seg seg-no" style="width:{w_n:.1f}%">No {b["no"]*100:.0f}%</div>'
-                        f'</div>')
-                    body.append('<div class="bar-label">Model only — no BTTS odds in data source</div>')
-
-                if "correct_score" in m:
-                    body.append('<h4>Most Likely Scores</h4>')
-                    body.append('<div class="score-list">')
-                    for score, prob in m["correct_score"]:
-                        body.append(
-                            f'<div class="score-chip">{html_mod.escape(score)}'
-                            f' <span class="pct">{prob*100:.1f}%</span></div>')
-                    body.append('</div>')
-
-                if "asian_handicap" in m:
-                    ah = m["asian_handicap"]
-                    line = ah["line"]
-                    line_str = f"{line:+.2g}" if line != 0 else "0"
-                    body.append(f'<h4>Asian Handicap ({html_mod.escape(line_str)})</h4>')
-                    w_c = max(ah["home_cover"] * 100, 4)
-                    w_p = max(ah["push"] * 100, 2) if ah["push"] > 0.005 else 0
-                    w_l = max(ah["home_lose"] * 100, 4)
-                    parts = (
-                        f'<div class="seg seg-cover" style="width:{w_c:.1f}%">'
-                        f'Cover {ah["home_cover"]*100:.0f}%</div>')
-                    if w_p > 0:
-                        parts += (
-                            f'<div class="seg seg-push" style="width:{w_p:.1f}%">'
-                            f'Push {ah["push"]*100:.0f}%</div>')
-                    parts += (
-                        f'<div class="seg seg-lose" style="width:{w_l:.1f}%">'
-                        f'Lose {ah["home_lose"]*100:.0f}%</div>')
-                    body.append(f'<div class="two-bar">{parts}</div>')
-                    if ah["market"]:
-                        body.append(
-                            f'<div class="bar-label">Market: Home {ah["market"]["home_cover"]*100:.1f}%'
-                            f' / Away {ah["market"]["away_cover"]*100:.1f}%</div>')
-                    else:
-                        body.append('<div class="bar-label">Model only</div>')
-
+                body.append('<div class="match-card">')
+                body.append(f'<div class="match-summary" onclick="toggleCard(this)">')
+                backup_tag = '<span class="backup-tag">NO ODDS</span>' if no_mkt else ''
+                body.append(f'<div class="match-teams">{ht} v {at}{backup_tag}</div>')
+                body.append(f'<div class="match-pick"><strong>{pct:.0f}%</strong> {pick_text}</div>')
+                body.append(f'<div class="match-time">{kick_time}</div>')
+                body.append('<div class="expand-icon">&#9660;</div>')
                 body.append('</div>')
 
-            if has_actual:
-                act = m["actual"]
-                rw = OUTCOME_WORDS[act["result"]]
-                body.append(
-                    f'<div class="result-line">Result: {act["home_goals"]}-{act["away_goals"]}'
-                    f' ({rw})</div>')
-            body.append("</div>")
+                # Detail panel (hidden by default)
+                body.append('<div class="match-detail">')
+                if no_mkt:
+                    body.append(
+                        '<div class="demo-banner" style="margin-bottom:8px;font-size:0.8rem">'
+                        'Schedule from backup source &mdash; no market odds available'
+                        '</div>')
+                _render_match_detail(m, body)
+                body.append('</div>')  # match-detail
+                body.append('</div>')  # match-card
+
+            body.append('</div>')  # league-section
+
+        body.append('</div>')  # date-group
 
     # Footer
     body.append('<div class="footer">')
-    body.append("<p>Probabilities shown are model estimates, not recommendations.</p>")
-    body.append("<p>Highest probability reflects what the model considers most likely "
-                "&mdash; it does not by itself indicate value against the price offered "
-                "by a bookmaker.</p>")
+    body.append("<p>Probabilities are model estimates, not recommendations. "
+                "Highest probability = most likely outcome, not necessarily value "
+                "against the bookmaker's price.</p>")
     if demo_mode:
         body.append(
-            "<p>Actual results shown for gut-check only &mdash; this is not a backtest.</p>")
+            "<p>Actual results shown for gut-check only &mdash; not a backtest.</p>")
     body.append("</div>")
 
     html_content = (
@@ -1056,7 +1110,8 @@ def render_html(predictions, demo_mode, as_of_date):
         f"<style>{_HTML_CSS}</style>\n"
         "</head>\n<body>\n"
         + "\n".join(body)
-        + "\n</body>\n</html>\n"
+        + f"\n<script>{_HTML_JS}</script>\n"
+        "</body>\n</html>\n"
     )
 
     out_path.write_text(html_content, encoding="utf-8")
