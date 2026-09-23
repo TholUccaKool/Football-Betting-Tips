@@ -8,6 +8,10 @@ on:
     - cron: "0 7 * * 2"
     # Friday 07:00 UTC — weekend predictions
     - cron: "0 7 * * 5"
+    # Friday 15:00 UTC — safety net. GitHub delays the 07:00 cron to ~12:00-13:30 UTC in
+    # practice, and football-data.co.uk publishes the weekend fixtures.csv around 13:00 GMT,
+    # so the morning run often misses it and deploys odds-less TheSportsDB fixtures instead.
+    - cron: "0 15 * * 5"
   workflow_dispatch: {}
 
 permissions:
