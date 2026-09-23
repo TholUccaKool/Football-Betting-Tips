@@ -210,8 +210,54 @@ def _map_tsdb_team(name: str) -> str:
 
 def fetch_tsdb_fixtures(leagues: list[str]) -> pd.DataFrame:
     """Fetch upcoming fixtures from TheSportsDB for the given league names.
+TSDB_REQUEST_DELAY = 2.5          # seconds between requests; free key allows ~30/min
+TSDB_RETRY_WAITS = (15, 30, 60)   # backoff on HTTP 429 / 5xx, seconds
 
-    Uses the eventsday endpoint (uncapped on free tier) across the next 7 days.
+
+def _tsdb_get(url: str) -> dict | None:
+    """GET a TheSportsDB URL with fixed pacing and backoff on 429/5xx.
+
+    Every request (success or failure) is followed by TSDB_REQUEST_DELAY so the
+    loop never bursts past the free-tier rate limit. On 429 or 5xx the request
+    is retried up to len(TSDB_RETRY_WAITS) times with increasing waits.
+    Returns the parsed JSON dict, or None if the request ultimately failed.
+    """
+    n_retries = len(TSDB_RETRY_WAITS)
+    for attempt in range(n_retries + 1):
+        try:
+            resp = requests.get(url, timeout=15)
+        except Exception as exc:
+            logger.warning("  TheSportsDB request error for %s: %s", url, exc)
+            time.sleep(TSDB_REQUEST_DELAY)
+            return None
+
+        if resp.status_code == 429 or resp.status_code >= 500:
+            if attempt < n_retries:
+                wait = TSDB_RETRY_WAITS[attempt]
+                logger.warning("  TheSportsDB HTTP %d for %s - backing off %ds (retry %d/%d)",
+                               resp.status_code, url, wait, attempt + 1, n_retries)
+                time.sleep(wait)
+                continue
+            logger.warning("  TheSportsDB HTTP %d for %s - giving up after %d retries",
+                           resp.status_code, url, n_retries)
+            time.sleep(TSDB_REQUEST_DELAY)
+            return None
+
+        time.sleep(TSDB_REQUEST_DELAY)
+        try:
+            resp.raise_for_status()
+            return resp.json()
+        except Exception as exc:
+            logger.warning("  TheSportsDB bad response for %s: %s", url, exc)
+            return None
+    return None
+
+
+
+    Uses the eventsday endpoint across the next 7 days (the free key caps
+    eventsnextleague at a single event per league, so per-day queries are the
+    only way to get a full matchweek). Requests are paced and retried with
+    backoff via _tsdb_get so the free-tier rate limit is never exceeded.
     Returns a DataFrame with the same columns as fetch_fixtures but odds set to NaN.
     """
     if not leagues:
@@ -221,20 +267,16 @@ def fetch_tsdb_fixtures(leagues: list[str]) -> pd.DataFrame:
     rows = []
     for league in leagues:
         tsdb_id = TSDB_LEAGUE_IDS.get(league)
+    n_failed = 0
         if tsdb_id is None:
             continue
         for day_offset in range(7):
             day = today + timedelta(days=day_offset)
             url = (f"https://www.thesportsdb.com/api/v1/json/3/"
                    f"eventsday.php?d={day.isoformat()}&l={tsdb_id}")
-            try:
-                resp = requests.get(url, timeout=15)
-                resp.raise_for_status()
-                data = resp.json()
-                time.sleep(0.5)  # rate-limit courtesy
-            except Exception as exc:
-                logger.warning("  TheSportsDB request failed for %s %s: %s",
-                               league, day, exc)
+            data = _tsdb_get(url)
+            if data is None:
+                n_failed += 1
                 continue
             events = data.get("events") or []
             for ev in events:
@@ -259,6 +301,9 @@ def fetch_tsdb_fixtures(leagues: list[str]) -> pd.DataFrame:
                 })
     if not rows:
         return pd.DataFrame()
+    if n_failed:
+        logger.warning("  TheSportsDB: %d of %d day-queries failed after retries",
+                       n_failed, 7 * len([l for l in leagues if l in TSDB_LEAGUE_IDS]))
     df = pd.DataFrame(rows)
     df["_from_tsdb"] = True
     return df.drop_duplicates(subset=["date", "home_team", "away_team"]).reset_index(drop=True)
