@@ -35,15 +35,53 @@ jobs:
         run: python -m src.data.ingest_match_history
 
       - name: Ingest Understat xG
+      # Last-known-good dataset: restored before ingest so that if football-data.co.uk is
+      # down (503s on 2026-09-07/08 killed two runs) we still have a matches.parquet to
+      # predict from. Saved again below only after a successful fresh build.
+      - name: Restore last-known-good dataset
+        id: lkg
+        uses: actions/cache/restore@v4
+        with:
+          path: data/processed/matches.parquet
+          key: matches-parquet-${{ github.run_id }}
+          restore-keys: |
+            matches-parquet-
+
         run: python -m src.data.ingest_understat
+        id: ingest
+        continue-on-error: true
 
       - name: Build dataset
         run: python -m src.data.build_dataset
+        id: understat
+        if: steps.ingest.outcome == 'success'
+        continue-on-error: true
 
       - name: Generate predictions (live with demo fallback)
         run: |
+        id: build
+        if: steps.ingest.outcome == 'success' && steps.understat.outcome == 'success'
+        continue-on-error: true
           set +e
           # Try live mode first
+      - name: Verify dataset (fall back to last-known-good)
+        run: |
+          if [ "${{ steps.build.outcome }}" = "success" ]; then
+            echo "Fresh dataset built."
+          elif [ -f data/processed/matches.parquet ]; then
+            echo "::warning::Data ingest/build failed (ingest=${{ steps.ingest.outcome }}, understat=${{ steps.understat.outcome }}, build=${{ steps.build.outcome }}) — predicting from last-known-good matches.parquet (cache key: ${{ steps.lkg.outputs.cache-matched-key }})"
+          else
+            echo "::error::Data ingest/build failed and no last-known-good matches.parquet is cached. Cannot predict."
+            exit 1
+          fi
+
+      - name: Save dataset as last-known-good
+        if: steps.build.outcome == 'success'
+        uses: actions/cache/save@v4
+        with:
+          path: data/processed/matches.parquet
+          key: matches-parquet-${{ github.run_id }}
+
           python -m src.predict.predict_fixtures --html 2>&1
           EXIT_CODE=$?
 

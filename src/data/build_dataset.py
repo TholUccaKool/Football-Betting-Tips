@@ -260,4 +260,8 @@ def build(cfg: dict | None = None) -> pd.DataFrame:
 
 
 if __name__ == "__main__":
-    build()
+    import sys
+    result = build()
+    if result is None or result.empty:
+        print("::error::build_dataset produced no matches - matches.parquet was NOT written")
+        sys.exit(1)

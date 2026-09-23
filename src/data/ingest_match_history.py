@@ -9,6 +9,8 @@ football-data.co.uk since soccerdata doesn't have built-in mappings for them.
 
 import io
 import logging
+import sys
+import time
 
 import pandas as pd
 import requests
@@ -34,6 +36,29 @@ LEAGUE_CODE_TO_NAME = {
 
 FOOTBALL_DATA_URL = "https://www.football-data.co.uk/mmz4281/{season}/{code}.csv"
 
+RETRY_WAITS = (5, 15, 30)       # backoff between attempts, seconds
+MAX_CONSECUTIVE_FAILURES = 3    # abort the whole ingest after this many fetches fail in a row
+
+
+class IngestAborted(RuntimeError):
+    """Raised when the data source looks down (too many consecutive failures)."""
+
+
+def _with_retries(fn, label: str):
+    """Call fn() with backoff retries. Returns fn's result or raises the last error."""
+    last_exc = None
+    for attempt in range(len(RETRY_WAITS) + 1):
+        try:
+            return fn()
+        except Exception as exc:  # noqa: BLE001 - we re-raise after retries
+            last_exc = exc
+            if attempt < len(RETRY_WAITS):
+                wait = RETRY_WAITS[attempt]
+                logger.warning(f"  {label}: {type(exc).__name__}: {exc} - retrying in {wait}s "
+                               f"({attempt + 1}/{len(RETRY_WAITS)})")
+                time.sleep(wait)
+    raise last_exc
+
 
 def _fetch_direct(league_code: str, season: int, output_dir) -> tuple[str, int] | None:
     """Download a league/season CSV directly from football-data.co.uk.
@@ -44,10 +69,15 @@ def _fetch_direct(league_code: str, season: int, output_dir) -> tuple[str, int] 
     url = FOOTBALL_DATA_URL.format(season=season_str, code=league_code)
     label = f"{league_code} {season_str}"
 
-    try:
+    def _get():
         resp = requests.get(url, headers={"User-Agent": _BROWSER_UA}, timeout=30)
+        if resp.status_code == 404:
+            return None  # season file genuinely not published yet - not retryable
         resp.raise_for_status()
-    except Exception as e:
+        return resp
+
+    resp = _with_retries(_get, label)   # raises on persistent HTTP/network failure
+    if resp is None:
         return None
 
     try:
@@ -91,6 +121,16 @@ def ingest(cfg: dict | None = None) -> None:
     seasons = season_range(cfg)
     saved = []
     skipped = []
+    consecutive_failures = 0
+
+    def _note_failure(label, reason):
+        nonlocal consecutive_failures
+        consecutive_failures += 1
+        skipped.append((label, reason))
+        if consecutive_failures >= MAX_CONSECUTIVE_FAILURES:
+            raise IngestAborted(
+                f"{consecutive_failures} consecutive fetch failures (last: {label}: {reason}) "
+                f"- football-data.co.uk looks unavailable")
 
     # --- Core leagues via soccerdata (handles caching for in-progress seasons) ---
     for league_code in cfg["leagues"]:
@@ -103,16 +143,17 @@ def ingest(cfg: dict | None = None) -> None:
             label = f"{league_name} {season_str}"
             logger.info(f"Fetching {label}")
             try:
-                mh = sd.MatchHistory(league_name, [season])
-                df = mh.read_games()
+                df = _with_retries(
+                    lambda: sd.MatchHistory(league_name, [season]).read_games(), label)
                 out_path = output_dir / f"{league_code}_{season}.parquet"
                 df.to_parquet(out_path)
                 logger.info(f"  Saved {len(df)} matches -> {out_path.name}")
                 saved.append((label, len(df)))
+                consecutive_failures = 0
             except Exception as e:
                 reason = f"{type(e).__name__}: {e}"
                 logger.warning(f"  Skipped {label}: {reason}")
-                skipped.append((label, reason))
+                _note_failure(label, reason)
 
     # --- Secondary leagues via direct download ---
     secondary = cfg.get("secondary_leagues", [])
@@ -123,11 +164,18 @@ def ingest(cfg: dict | None = None) -> None:
             season_str = str(season)[-2:] + str(season + 1)[-2:]
             label = f"{league_code} {season_str}"
             logger.info(f"Fetching {label}")
-            result = _fetch_direct(league_code, season, output_dir)
+            try:
+                result = _fetch_direct(league_code, season, output_dir)
+            except Exception as e:
+                reason = f"{type(e).__name__}: {e}"
+                logger.warning(f"  Skipped {label}: {reason}")
+                _note_failure(label, reason)
+                continue
             if result is not None:
                 label, n = result
                 logger.info(f"  Saved {n} matches -> {league_code}_{season}.parquet")
                 saved.append((label, n))
+                consecutive_failures = 0
             else:
                 logger.warning(f"  Skipped {label}: not available or empty")
                 skipped.append((label, "not available"))
@@ -140,6 +188,19 @@ def ingest(cfg: dict | None = None) -> None:
         logger.info(f"  SKIP {label}: {reason}")
     logger.info("=" * 60)
 
+    if not saved:
+        # GitHub Actions annotation so the failure is visible in the run summary
+        print("::error::Match-history ingest saved 0 files - football-data.co.uk unavailable?")
+        sys.exit(1)
+    if skipped:
+        print(f"::warning::Match-history ingest skipped {len(skipped)} of "
+              f"{len(saved) + len(skipped)} league-seasons")
+
 
 if __name__ == "__main__":
-    ingest()
+    try:
+        ingest()
+    except IngestAborted as exc:
+        logger.error(str(exc))
+        print(f"::error::Match-history ingest aborted: {exc}")
+        sys.exit(1)
