@@ -15,7 +15,7 @@ on:
   workflow_dispatch: {}
 
 permissions:
-  contents: read
+  contents: write
 
 concurrency:
   group: deploy
@@ -35,10 +35,6 @@ jobs:
       - name: Install dependencies
         run: pip install -r requirements.txt
 
-      - name: Ingest match history
-        run: python -m src.data.ingest_match_history
-
-      - name: Ingest Understat xG
       # Last-known-good dataset: restored before ingest so that if football-data.co.uk is
       # down (503s on 2026-09-07/08 killed two runs) we still have a matches.parquet to
       # predict from. Saved again below only after a successful fresh build.
@@ -51,23 +47,23 @@ jobs:
           restore-keys: |
             matches-parquet-
 
-        run: python -m src.data.ingest_understat
+      - name: Ingest match history
         id: ingest
         continue-on-error: true
+        run: python -m src.data.ingest_match_history
 
-      - name: Build dataset
-        run: python -m src.data.build_dataset
+      - name: Ingest Understat xG
         id: understat
         if: steps.ingest.outcome == 'success'
         continue-on-error: true
+        run: python -m src.data.ingest_understat
 
-      - name: Generate predictions (live with demo fallback)
-        run: |
+      - name: Build dataset
         id: build
         if: steps.ingest.outcome == 'success' && steps.understat.outcome == 'success'
         continue-on-error: true
-          set +e
-          # Try live mode first
+        run: python -m src.data.build_dataset
+
       - name: Verify dataset (fall back to last-known-good)
         run: |
           if [ "${{ steps.build.outcome }}" = "success" ]; then
@@ -86,7 +82,11 @@ jobs:
           path: data/processed/matches.parquet
           key: matches-parquet-${{ github.run_id }}
 
-          python -m src.predict.predict_fixtures --html 2>&1
+      - name: Generate predictions (live with demo fallback)
+        run: |
+          set +e
+          # Try live mode first (--archive copies to archive/ and builds index)
+          python -m src.predict.predict_fixtures --archive 2>&1
           EXIT_CODE=$?
 
           # Check if any HTML was produced (live mode succeeds but may find 0 fixtures)
@@ -94,8 +94,19 @@ jobs:
 
           if [ "$HTML_COUNT" -eq 0 ]; then
             echo "::notice::No live fixtures found — falling back to demo date 2026-05-24"
+            # --html only: demo pages must not be archived as if they were real rounds
             python -m src.predict.predict_fixtures --html --as-of 2026-05-24
           fi
+
+      - name: Commit archive to repo
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add archive/
+          # Only commit if there are changes
+          git diff --cached --quiet && echo "No archive changes" && exit 0
+          git commit -m "Archive prediction round $(date -u +%Y-%m-%d)"
+          git push
 
       - name: Prepare Vercel prebuilt output
         run: |
@@ -106,6 +117,11 @@ jobs:
           fi
           mkdir -p .vercel/output/static
           cp "$LATEST" .vercel/output/static/index.html
+          # Include archive directory in the deploy
+          if [ -d archive ]; then
+            cp -r archive .vercel/output/static/archive
+            echo "Archive included: $(ls archive/*.html 2>/dev/null | wc -l) pages"
+          fi
           echo '{"version":3}' > .vercel/output/config.json
           echo "Deploying: $LATEST"
 

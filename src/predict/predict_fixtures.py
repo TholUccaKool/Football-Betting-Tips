@@ -10,6 +10,8 @@ import html as html_mod
 import io
 import json
 import logging
+import re
+import shutil
 import sys
 import time
 from datetime import datetime, timedelta
@@ -208,8 +210,6 @@ def _map_tsdb_team(name: str) -> str:
     return _TSDB_TO_FD.get(name, name)
 
 
-def fetch_tsdb_fixtures(leagues: list[str]) -> pd.DataFrame:
-    """Fetch upcoming fixtures from TheSportsDB for the given league names.
 TSDB_REQUEST_DELAY = 2.5          # seconds between requests; free key allows ~30/min
 TSDB_RETRY_WAITS = (15, 30, 60)   # backoff on HTTP 429 / 5xx, seconds
 
@@ -253,6 +253,8 @@ def _tsdb_get(url: str) -> dict | None:
     return None
 
 
+def fetch_tsdb_fixtures(leagues: list[str]) -> pd.DataFrame:
+    """Fetch upcoming fixtures from TheSportsDB for the given league names.
 
     Uses the eventsday endpoint across the next 7 days (the free key caps
     eventsnextleague at a single event per league, so per-day queries are the
@@ -265,9 +267,9 @@ def _tsdb_get(url: str) -> dict | None:
 
     today = datetime.now().date()
     rows = []
+    n_failed = 0
     for league in leagues:
         tsdb_id = TSDB_LEAGUE_IDS.get(league)
-    n_failed = 0
         if tsdb_id is None:
             continue
         for day_offset in range(7):
@@ -299,11 +301,11 @@ def _tsdb_get(url: str) -> dict | None:
                     "away_odds": np.nan,
                     "_from_tsdb": True,
                 })
-    if not rows:
-        return pd.DataFrame()
     if n_failed:
         logger.warning("  TheSportsDB: %d of %d day-queries failed after retries",
                        n_failed, 7 * len([l for l in leagues if l in TSDB_LEAGUE_IDS]))
+    if not rows:
+        return pd.DataFrame()
     df = pd.DataFrame(rows)
     df["_from_tsdb"] = True
     return df.drop_duplicates(subset=["date", "home_team", "away_team"]).reset_index(drop=True)
@@ -908,6 +910,19 @@ h1 { font-size: 1.4rem; margin-bottom: 4px; }
 .footer { margin-top: 24px; padding-top: 14px; border-top: 1px solid #ccc;
           font-size: 0.78rem; color: #888; }
 .unvalidated { font-size: 0.72rem; color: #b45309; font-style: italic; }
+/* ── Archive navigation ── */
+.archive-nav { display: flex; justify-content: space-between; align-items: center;
+               padding: 8px 12px; margin-bottom: 12px; background: #fff; border: 1px solid #ddd;
+               border-radius: 8px; font-size: 0.88rem; }
+.archive-nav-link { color: #4338ca; text-decoration: none; font-weight: 500; min-width: 80px; }
+.archive-nav-link:first-child { text-align: left; }
+.archive-nav-link:last-child { text-align: right; }
+.archive-nav-link:hover { text-decoration: underline; }
+.archive-nav-link.disabled { visibility: hidden; }
+.archive-nav-current { font-weight: 600; text-align: center; }
+.archive-banner { background: #fef3c7; border: 1px solid #f59e0b; border-radius: 6px;
+                  padding: 8px 12px; margin-bottom: 14px; font-size: 0.85rem; text-align: center; }
+.archive-banner a { color: #4338ca; font-weight: 600; }
 """
 
 _HTML_JS = """\
@@ -1049,8 +1064,47 @@ def _render_match_detail(m, body):
             f' ({rw})</div>')
 
 
-def render_html(predictions, demo_mode, as_of_date):
-    """Write a self-contained HTML report and return the output path."""
+def _render_archive_nav(nav):
+    """Return HTML for the prev/next archive navigation bar."""
+    parts = []
+    parts.append('<div class="archive-nav">')
+
+    if nav.get("prev_date"):
+        pd_label = datetime.strptime(nav["prev_date"], "%Y-%m-%d").strftime("%b %d")
+        prev_href = f"archive/predictions-{nav['prev_date']}.html" if not nav.get("is_archive") else f"predictions-{nav['prev_date']}.html"
+        parts.append(f'<a class="archive-nav-link" href="{prev_href}">&larr; {pd_label}</a>')
+    else:
+        parts.append('<span class="archive-nav-link disabled"></span>')
+
+    cur_label = datetime.strptime(nav["current_date"], "%Y-%m-%d").strftime("%b %d")
+    if nav.get("is_archive"):
+        parts.append(f'<span class="archive-nav-current">{cur_label}</span>')
+    else:
+        parts.append(f'<span class="archive-nav-current">{cur_label} (latest)</span>')
+
+    if nav.get("next_date"):
+        nd_label = datetime.strptime(nav["next_date"], "%Y-%m-%d").strftime("%b %d")
+        next_href = f"archive/predictions-{nav['next_date']}.html" if not nav.get("is_archive") else f"predictions-{nav['next_date']}.html"
+        parts.append(f'<a class="archive-nav-link" href="{next_href}">&rarr; {nd_label}</a>')
+    else:
+        parts.append('<span class="archive-nav-link disabled"></span>')
+
+    parts.append('</div>')
+
+    if nav.get("is_archive"):
+        parts.append(
+            f'<div class="archive-banner">Archived prediction round from {cur_label} &mdash; '
+            f'<a href="../index.html">view latest predictions</a></div>')
+
+    return "\n".join(parts)
+
+
+def render_html(predictions, demo_mode, as_of_date, archive_nav=None):
+    """Write a self-contained HTML report and return the output path.
+
+    archive_nav: optional dict with keys 'prev_date', 'next_date', 'current_date',
+                 'is_archive' for inter-page navigation.
+    """
     out_dir = ROOT_DIR / "output"
     out_dir.mkdir(exist_ok=True)
     date_label = as_of_date if demo_mode else datetime.now().strftime("%Y-%m-%d")
@@ -1074,6 +1128,10 @@ def render_html(predictions, demo_mode, as_of_date):
         return d.strftime("%a %d %b")
 
     body = []
+
+    # Archive navigation bar (injected at top)
+    if archive_nav:
+        body.append(_render_archive_nav(archive_nav))
 
     # Header
     body.append("<h1>Match Predictions</h1>")
@@ -1233,6 +1291,76 @@ def render_html(predictions, demo_mode, as_of_date):
     return out_path
 
 
+def build_archive(html_path):
+    """Copy current HTML into archive/, update index.json, and inject nav into all pages.
+
+    Returns the archive directory path.
+    """
+    archive_dir = ROOT_DIR / "archive"
+    archive_dir.mkdir(exist_ok=True)
+
+    # Determine today's date label from the HTML filename (predictions_YYYY-MM-DD.html)
+    m = re.search(r"predictions_(\d{4}-\d{2}-\d{2})\.html", html_path.name)
+    if not m:
+        logger.warning("Could not parse date from %s — skipping archive", html_path.name)
+        return archive_dir
+    current_date = m.group(1)
+
+    # Copy into archive with hyphenated name
+    archive_file = archive_dir / f"predictions-{current_date}.html"
+    shutil.copy2(html_path, archive_file)
+    logger.info("Archived: %s", archive_file)
+
+    # Build/update index.json — sorted list of all archived dates
+    index_path = archive_dir / "index.json"
+    if index_path.exists():
+        existing = json.loads(index_path.read_text())
+    else:
+        existing = []
+    dates = sorted(set(existing) | {current_date})
+    index_path.write_text(json.dumps(dates, indent=2) + "\n")
+    logger.info("Archive index: %s dates", len(dates))
+
+    # Now inject navigation into all archive pages + the live page
+    for i, d in enumerate(dates):
+        nav = {
+            "prev_date": dates[i - 1] if i > 0 else None,
+            "next_date": dates[i + 1] if i < len(dates) - 1 else None,
+            "current_date": d,
+            "is_archive": True,
+        }
+        _inject_nav_into_html(archive_dir / f"predictions-{d}.html", nav)
+
+    # Inject nav into the live page (index.html will be copied from this)
+    cur_idx = dates.index(current_date)
+    live_nav = {
+        "prev_date": dates[cur_idx - 1] if cur_idx > 0 else None,
+        "next_date": None,
+        "current_date": current_date,
+        "is_archive": False,
+    }
+    _inject_nav_into_html(html_path, live_nav)
+
+    return archive_dir
+
+
+def _inject_nav_into_html(html_path, nav):
+    """Replace or insert archive nav into an existing HTML file."""
+    if not html_path.exists():
+        return
+    content = html_path.read_text(encoding="utf-8")
+    nav_html = _render_archive_nav(nav)
+
+    # Remove any existing archive nav + banner
+    content = re.sub(
+        r'<div class="archive-nav">.*?</div>\s*(?:<div class="archive-banner">.*?</div>)?\s*',
+        '', content, flags=re.DOTALL)
+
+    # Insert after <body>
+    content = content.replace("<body>\n", "<body>\n" + nav_html + "\n", 1)
+    html_path.write_text(content, encoding="utf-8")
+
+
 # ── Main ─────────────────────────────────────────────────────────────────
 
 def main():
@@ -1242,7 +1370,11 @@ def main():
                         help="Demo mode: use matches from this past date as stand-in fixtures.")
     parser.add_argument("--html", action="store_true",
                         help="Also generate an HTML report in output/.")
+    parser.add_argument("--archive", action="store_true",
+                        help="Archive the HTML report (implies --html).")
     args = parser.parse_args()
+    if args.archive:
+        args.html = True
 
     demo_mode = args.as_of is not None
     actuals = None
@@ -1335,6 +1467,10 @@ def main():
     if args.html:
         html_path = render_html(predictions, demo_mode, args.as_of or "")
         print(f"\nHTML report written to: {html_path}")
+
+        if args.archive:
+            archive_dir = build_archive(html_path)
+            print(f"Archive updated: {archive_dir}")
 
 
 if __name__ == "__main__":
