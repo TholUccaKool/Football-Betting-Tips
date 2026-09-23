@@ -1,0 +1,448 @@
+<!DOCTYPE html>
+<html lang='en'>
+<head>
+<meta charset='utf-8'>
+<meta name='viewport' content='width=device-width, initial-scale=1'>
+<title>Predictions 2026-09-23</title>
+<style>* { margin: 0; padding: 0; box-sizing: border-box; }
+body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+       background: #f5f5f5; color: #1a1a1a; max-width: 820px; margin: 0 auto; padding: 16px 12px; }
+h1 { font-size: 1.4rem; margin-bottom: 4px; }
+.meta { color: #666; font-size: 0.82rem; margin-bottom: 12px; }
+.demo-banner { background: #fff3cd; border: 1px solid #ffc107; border-radius: 6px;
+               padding: 8px 12px; margin-bottom: 14px; font-size: 0.85rem; }
+.about-box { background: #f0f4ff; border: 1px solid #c7d2fe; border-radius: 8px;
+             padding: 12px 16px; margin-bottom: 16px; font-size: 0.84rem; line-height: 1.45; }
+.about-box strong { color: #4338ca; }
+/* ── Date tabs ── */
+.date-tabs { display: flex; gap: 6px; overflow-x: auto; padding: 4px 0 12px 0;
+             -webkit-overflow-scrolling: touch; scrollbar-width: none; position: sticky;
+             top: 0; background: #f5f5f5; z-index: 10; }
+.date-tabs::-webkit-scrollbar { display: none; }
+.date-tab { flex-shrink: 0; padding: 6px 14px; border-radius: 20px; border: 1px solid #ddd;
+            background: #fff; font-size: 0.82rem; font-weight: 500; color: #555; cursor: pointer;
+            transition: all 0.15s; white-space: nowrap; }
+.date-tab:hover { border-color: #999; }
+.date-tab.active { background: #1a1a1a; color: #fff; border-color: #1a1a1a; }
+.date-group { display: none; }
+.date-group.active { display: block; }
+/* ── Top picks ── */
+.top-picks { background: #fff; border-radius: 8px; border: 1px solid #ddd;
+             padding: 12px 16px; margin-bottom: 16px; }
+.top-picks-hdr { font-size: 0.92rem; font-weight: 600; margin-bottom: 8px; }
+.top-picks ol { padding-left: 22px; }
+.top-picks li { padding: 2px 0; font-size: 0.85rem; }
+.top-picks .pick-name { font-weight: 600; }
+.top-picks .pick-matchup { color: #666; }
+.top-picks .pick-pct { font-weight: 600; }
+.top-picks .pick-tag { font-size: 0.75rem; color: #888; }
+.top-picks .market-tag { font-size: 0.7rem; font-weight: 600; color: #fff;
+            border-radius: 3px; padding: 1px 5px; margin-right: 4px; }
+.top-picks .mt-1x2 { background: #4338ca; }
+.top-picks .mt-ou { background: #f59e0b; }
+.top-picks .mt-btts { background: #22c55e; }
+.top-picks .mt-ah { background: #3b82f6; }
+.top-picks .caveat { font-size: 0.82rem; color: #666; margin-bottom: 8px; line-height: 1.4; }
+.top-picks .section-note { font-size: 0.82rem; color: #666; margin-bottom: 8px; line-height: 1.4; }
+/* ── League sections ── */
+.league-section { margin-bottom: 16px; }
+.league-hdr { font-size: 0.88rem; font-weight: 600; color: #555; padding: 8px 12px;
+              background: #e9ecef; border-radius: 6px 6px 0 0; }
+/* ── Match cards (compact) ── */
+.match-card { background: #fff; border: 1px solid #ddd; border-top: none;
+              padding: 10px 14px; cursor: pointer; transition: background 0.1s; }
+.match-card:last-child { border-radius: 0 0 6px 6px; }
+.league-section .match-card:first-of-type { border-top: 1px solid #ddd; }
+.match-card:hover { background: #fafafa; }
+.match-summary { display: flex; align-items: center; gap: 10px; }
+.match-teams { flex: 1; font-size: 0.92rem; font-weight: 600; }
+.match-time { font-size: 0.78rem; color: #888; flex-shrink: 0; min-width: 44px; text-align: right; }
+.match-pick { font-size: 0.78rem; color: #4338ca; flex-shrink: 0; max-width: 180px;
+              text-align: right; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.match-pick strong { font-weight: 600; }
+.backup-tag { display: inline-block; font-size: 0.65rem; font-weight: 600; color: #b45309;
+              background: #fef3c7; border: 1px solid #fcd34d; border-radius: 3px;
+              padding: 0 4px; margin-left: 6px; vertical-align: middle; }
+.expand-icon { font-size: 0.7rem; color: #bbb; flex-shrink: 0; transition: transform 0.2s; }
+.match-card.open .expand-icon { transform: rotate(180deg); }
+/* ── Detail panel (hidden by default) ── */
+.match-detail { display: none; padding-top: 10px; border-top: 1px solid #eee; margin-top: 10px; }
+.match-card.open .match-detail { display: block; }
+.consensus-badge { background: #eef2ff; border: 1px solid #c7d2fe; border-radius: 6px;
+                   padding: 7px 10px; margin-bottom: 10px; font-size: 0.84rem; }
+.consensus-badge strong { color: #4338ca; }
+.consensus-badge .agree-tag { font-size: 0.78rem; color: #666; }
+.source-row { display: flex; align-items: center; margin-bottom: 5px; }
+.source-label { width: 90px; font-size: 0.78rem; font-weight: 500; color: #555; flex-shrink: 0; }
+.bar-wrap { flex: 1; display: flex; height: 20px; border-radius: 4px; overflow: hidden; }
+.seg { display: flex; align-items: center; justify-content: center;
+       font-size: 0.68rem; font-weight: 600; color: #fff; min-width: 26px; }
+.seg-home { background: #3b82f6; }
+.seg-draw { background: #9ca3af; }
+.seg-away { background: #ef4444; }
+.secondary-markets { margin-top: 10px; padding-top: 8px; border-top: 1px solid #eee; }
+.secondary-markets h4 { font-size: 0.78rem; font-weight: 600; color: #555; margin: 6px 0 3px 0; }
+.secondary-markets h4:first-child { margin-top: 0; }
+.two-bar { display: flex; height: 20px; border-radius: 4px; overflow: hidden; margin-bottom: 2px; }
+.two-bar .seg-over { background: #f59e0b; }
+.two-bar .seg-under { background: #6366f1; }
+.two-bar .seg-yes { background: #22c55e; }
+.two-bar .seg-no { background: #ef4444; }
+.two-bar .seg-cover { background: #3b82f6; }
+.two-bar .seg-push { background: #9ca3af; }
+.two-bar .seg-lose { background: #ef4444; }
+.bar-label { font-size: 0.7rem; color: #888; margin-bottom: 4px; }
+.score-list { display: flex; flex-wrap: wrap; gap: 5px; margin: 3px 0; }
+.score-chip { background: #f3f4f6; border: 1px solid #e5e7eb; border-radius: 4px;
+              padding: 2px 7px; font-size: 0.75rem; font-weight: 500; }
+.score-chip .pct { color: #666; font-weight: 400; }
+.result-line { margin-top: 8px; padding-top: 7px; border-top: 1px solid #eee;
+               font-size: 0.84rem; font-weight: 500; }
+.correct { border-left: 4px solid #22c55e; }
+.incorrect { border-left: 4px solid #ef4444; }
+.footer { margin-top: 24px; padding-top: 14px; border-top: 1px solid #ccc;
+          font-size: 0.78rem; color: #888; }
+.unvalidated { font-size: 0.72rem; color: #b45309; font-style: italic; }
+/* ── Archive navigation ── */
+.archive-nav { display: flex; justify-content: space-between; align-items: center;
+               padding: 8px 12px; margin-bottom: 12px; background: #fff; border: 1px solid #ddd;
+               border-radius: 8px; font-size: 0.88rem; }
+.archive-nav-link { color: #4338ca; text-decoration: none; font-weight: 500; min-width: 80px; }
+.archive-nav-link:first-child { text-align: left; }
+.archive-nav-link:last-child { text-align: right; }
+.archive-nav-link:hover { text-decoration: underline; }
+.archive-nav-link.disabled { visibility: hidden; }
+.archive-nav-current { font-weight: 600; text-align: center; }
+.archive-banner { background: #fef3c7; border: 1px solid #f59e0b; border-radius: 6px;
+                  padding: 8px 12px; margin-bottom: 14px; font-size: 0.85rem; text-align: center; }
+.archive-banner a { color: #4338ca; font-weight: 600; }
+</style>
+</head>
+<body>
+<div class="archive-nav">
+<span class="archive-nav-link disabled"></span>
+<span class="archive-nav-current">Sep 23</span>
+<span class="archive-nav-link disabled"></span>
+</div>
+<div class="archive-banner">Archived prediction round from Sep 23 &mdash; <a href="../index.html">view latest predictions</a></div>
+<h1>Match Predictions</h1>
+<p class="meta">Generated 2026-09-23 07:14 &middot; 8 matches across 4 day(s)</p>
+<div class="about-box"><strong>What is this?</strong> Automated football match predictions for the top European leagues, built from three statistical models (Elo ratings, Dixon-Coles, and XGBoost) trained on eight seasons of historical data. Updates Mon/Tue/Fri. Click any match to expand full detail. <strong>Important:</strong> these are model estimates, not betting advice. None of these models consistently beat the market.</div>
+<div class="date-tabs">
+<div class="date-tab" data-date="2026-09-25" onclick="switchTab('2026-09-25')">Fri 25 Sep <span style="opacity:0.6">(1)</span></div>
+<div class="date-tab" data-date="2026-09-26" onclick="switchTab('2026-09-26')">Sat 26 Sep <span style="opacity:0.6">(3)</span></div>
+<div class="date-tab" data-date="2026-09-27" onclick="switchTab('2026-09-27')">Sun 27 Sep <span style="opacity:0.6">(3)</span></div>
+<div class="date-tab" data-date="2026-09-28" onclick="switchTab('2026-09-28')">Mon 28 Sep <span style="opacity:0.6">(1)</span></div>
+</div>
+<div class="top-picks">
+<div class="top-picks-hdr">Best Pick Every Match (All Markets)</div>
+<p class="caveat">A full 8-season backtest of this exact approach: raises hit rate to ~58% (vs ~51% for match-result-only picks), but displayed confidence runs ~7 points hot on average (stated ~65%, actual ~58%). About 83% of entries here are O/U or BTTS &mdash; single-model estimates, not full 4-source consensus. BTTS specifically has never been checked against real bookmaker odds.</p>
+<ol>
+<li class="top-pick-item" data-date="2026-09-27"><span class="market-tag mt-ou">O/U</span><span class="pick-name">Under 2.5 goals</span> <span class="pick-matchup">(Oviedo v Sp Gijon)</span> &mdash; <span class="pick-pct">68.3%</span></li>
+<li class="top-pick-item" data-date="2026-09-27"><span class="market-tag mt-ou">O/U</span><span class="pick-name">Under 2.5 goals</span> <span class="pick-matchup">(Eibar v Las Palmas)</span> &mdash; <span class="pick-pct">63.9%</span></li>
+<li class="top-pick-item" data-date="2026-09-26"><span class="market-tag mt-btts">BTTS</span><span class="pick-name">Both teams to score</span> <span class="pick-matchup">(Granada v Andorra)</span> &mdash; <span class="pick-pct">61.7%</span> <span class="pick-tag">(unvalidated)</span></li>
+<li class="top-pick-item" data-date="2026-09-26"><span class="market-tag mt-ou">O/U</span><span class="pick-name">Under 2.5 goals</span> <span class="pick-matchup">(Tenerife v Cadiz)</span> &mdash; <span class="pick-pct">61.5%</span></li>
+<li class="top-pick-item" data-date="2026-09-25"><span class="market-tag mt-1x2">1X2</span><span class="pick-name">Girona to win</span> <span class="pick-matchup">(Girona v Albacete)</span> &mdash; <span class="pick-pct">59.8%</span></li>
+<li class="top-pick-item" data-date="2026-09-27"><span class="market-tag mt-1x2">1X2</span><span class="pick-name">Córdoba to win</span> <span class="pick-matchup">(Valladolid v Córdoba)</span> &mdash; <span class="pick-pct">45.1%</span></li>
+<li class="top-pick-item" data-date="2026-09-26"><span class="market-tag mt-1x2">1X2</span><span class="pick-name">Celta Fortuna to win</span> <span class="pick-matchup">(Celta Fortuna v Sabadell)</span> &mdash; <span class="pick-pct">44.4%</span></li>
+<li class="top-pick-item" data-date="2026-09-28"><span class="market-tag mt-1x2">1X2</span><span class="pick-name">Castellon to win</span> <span class="pick-matchup">(Leganés v Castellon)</span> &mdash; <span class="pick-pct">38.8%</span></li>
+</ol></div>
+<div class="top-picks">
+<div class="top-picks-hdr">Best-Calibrated Picks (Match Result Only)</div>
+<p class="section-note">This list alone is well-calibrated in backtesting (states ~50%, actual ~51%) &mdash; the safer, more honest-confidence view.</p>
+<ol>
+<li class="top-pick-item" data-date="2026-09-25"><span class="market-tag mt-1x2">1X2</span><span class="pick-name">Girona to win</span> <span class="pick-matchup">(Girona v Albacete)</span> &mdash; <span class="pick-pct">59.8%</span> <span class="pick-tag">[unanimous]</span></li>
+<li class="top-pick-item" data-date="2026-09-26"><span class="market-tag mt-1x2">1X2</span><span class="pick-name">Tenerife to win</span> <span class="pick-matchup">(Tenerife v Cadiz)</span> &mdash; <span class="pick-pct">49.6%</span> <span class="pick-tag">[unanimous]</span></li>
+<li class="top-pick-item" data-date="2026-09-26"><span class="market-tag mt-1x2">1X2</span><span class="pick-name">Granada to win</span> <span class="pick-matchup">(Granada v Andorra)</span> &mdash; <span class="pick-pct">46.2%</span> <span class="pick-tag">[unanimous]</span></li>
+<li class="top-pick-item" data-date="2026-09-27"><span class="market-tag mt-1x2">1X2</span><span class="pick-name">Eibar to win</span> <span class="pick-matchup">(Eibar v Las Palmas)</span> &mdash; <span class="pick-pct">46.0%</span> <span class="pick-tag">[unanimous]</span></li>
+<li class="top-pick-item" data-date="2026-09-27"><span class="market-tag mt-1x2">1X2</span><span class="pick-name">Córdoba to win</span> <span class="pick-matchup">(Valladolid v Córdoba)</span> &mdash; <span class="pick-pct">45.1%</span> <span class="pick-tag">[unanimous]</span></li>
+<li class="top-pick-item" data-date="2026-09-26"><span class="market-tag mt-1x2">1X2</span><span class="pick-name">Celta Fortuna to win</span> <span class="pick-matchup">(Celta Fortuna v Sabadell)</span> &mdash; <span class="pick-pct">44.4%</span> <span class="pick-tag">[unanimous]</span></li>
+<li class="top-pick-item" data-date="2026-09-27"><span class="market-tag mt-1x2">1X2</span><span class="pick-name">Oviedo to win</span> <span class="pick-matchup">(Oviedo v Sp Gijon)</span> &mdash; <span class="pick-pct">41.9%</span> <span class="pick-tag">[unanimous]</span></li>
+<li class="top-pick-item" data-date="2026-09-28"><span class="market-tag mt-1x2">1X2</span><span class="pick-name">Castellon to win</span> <span class="pick-matchup">(Leganés v Castellon)</span> &mdash; <span class="pick-pct">38.8%</span> <span class="pick-tag">[unanimous]</span></li>
+</ol></div>
+<div class="date-group" id="day-2026-09-25">
+<div class="league-section">
+<div class="league-hdr">Segunda Division</div>
+<div class="match-card">
+<div class="match-summary" onclick="toggleCard(this)">
+<div class="match-teams">Girona v Albacete<span class="backup-tag">NO ODDS</span></div>
+<div class="match-pick"><strong>60%</strong> Girona to win</div>
+<div class="match-time">18:30</div>
+<div class="expand-icon">&#9660;</div>
+</div>
+<div class="match-detail">
+<div class="demo-banner" style="margin-bottom:8px;font-size:0.8rem">Schedule from backup source &mdash; no market odds available</div>
+<div class="consensus-badge">Model favors: <strong>Girona to win</strong> &mdash; 59.8% avg <span class="agree-tag">(all sources agree — 2 sources, no market)</span></div>
+<div class="source-row">
+<div class="source-label">Elo</div>
+<div class="bar-wrap"><div class="seg seg-home" style="width:58.1%">58%</div><div class="seg seg-draw" style="width:24.6%">25%</div><div class="seg seg-away" style="width:17.3%">17%</div></div>
+</div>
+<div class="source-row">
+<div class="source-label">Dixon-Coles</div>
+<div class="bar-wrap"><div class="seg seg-home" style="width:61.6%">62%</div><div class="seg seg-draw" style="width:23.1%">23%</div><div class="seg seg-away" style="width:15.3%">15%</div></div>
+</div>
+<div class="secondary-markets">
+<h4>Over/Under 2.5 Goals</h4>
+<div class="two-bar"><div class="seg seg-over" style="width:49.8%">O 50%</div><div class="seg seg-under" style="width:50.2%">U 50%</div></div>
+<div class="bar-label">Model only</div>
+<h4>Both Teams to Score</h4>
+<div class="two-bar"><div class="seg seg-yes" style="width:47.4%">Yes 47%</div><div class="seg seg-no" style="width:52.6%">No 53%</div></div>
+<div class="bar-label">Model only &mdash; no BTTS odds in data source</div>
+<h4>Most Likely Scores</h4>
+<div class="score-list">
+<div class="score-chip">1-0 <span class="pct">12.4%</span></div>
+<div class="score-chip">2-0 <span class="pct">12.0%</span></div>
+<div class="score-chip">1-1 <span class="pct">11.0%</span></div>
+<div class="score-chip">2-1 <span class="pct">9.7%</span></div>
+<div class="score-chip">0-0 <span class="pct">7.5%</span></div>
+</div>
+</div>
+</div>
+</div>
+</div>
+</div>
+<div class="date-group" id="day-2026-09-26">
+<div class="league-section">
+<div class="league-hdr">Segunda Division</div>
+<div class="match-card">
+<div class="match-summary" onclick="toggleCard(this)">
+<div class="match-teams">Granada v Andorra<span class="backup-tag">NO ODDS</span></div>
+<div class="match-pick"><strong>46%</strong> Granada to win</div>
+<div class="match-time">14:15</div>
+<div class="expand-icon">&#9660;</div>
+</div>
+<div class="match-detail">
+<div class="demo-banner" style="margin-bottom:8px;font-size:0.8rem">Schedule from backup source &mdash; no market odds available</div>
+<div class="consensus-badge">Model favors: <strong>Granada to win</strong> &mdash; 46.2% avg <span class="agree-tag">(all sources agree — 2 sources, no market)</span></div>
+<div class="source-row">
+<div class="source-label">Elo</div>
+<div class="bar-wrap"><div class="seg seg-home" style="width:47.9%">48%</div><div class="seg seg-draw" style="width:27.0%">27%</div><div class="seg seg-away" style="width:25.1%">25%</div></div>
+</div>
+<div class="source-row">
+<div class="source-label">Dixon-Coles</div>
+<div class="bar-wrap"><div class="seg seg-home" style="width:44.5%">44%</div><div class="seg seg-draw" style="width:24.8%">25%</div><div class="seg seg-away" style="width:30.8%">31%</div></div>
+</div>
+<div class="secondary-markets">
+<h4>Over/Under 2.5 Goals</h4>
+<div class="two-bar"><div class="seg seg-over" style="width:59.3%">O 59%</div><div class="seg seg-under" style="width:40.7%">U 41%</div></div>
+<div class="bar-label">Model only</div>
+<h4>Both Teams to Score</h4>
+<div class="two-bar"><div class="seg seg-yes" style="width:61.7%">Yes 62%</div><div class="seg seg-no" style="width:38.3%">No 38%</div></div>
+<div class="bar-label">Model only &mdash; no BTTS odds in data source</div>
+<h4>Most Likely Scores</h4>
+<div class="score-list">
+<div class="score-chip">1-1 <span class="pct">11.4%</span></div>
+<div class="score-chip">2-1 <span class="pct">9.2%</span></div>
+<div class="score-chip">1-2 <span class="pct">7.5%</span></div>
+<div class="score-chip">1-0 <span class="pct">7.3%</span></div>
+<div class="score-chip">2-0 <span class="pct">6.6%</span></div>
+</div>
+</div>
+</div>
+</div>
+<div class="match-card">
+<div class="match-summary" onclick="toggleCard(this)">
+<div class="match-teams">Tenerife v Cadiz<span class="backup-tag">NO ODDS</span></div>
+<div class="match-pick"><strong>50%</strong> Tenerife to win</div>
+<div class="match-time">16:30</div>
+<div class="expand-icon">&#9660;</div>
+</div>
+<div class="match-detail">
+<div class="demo-banner" style="margin-bottom:8px;font-size:0.8rem">Schedule from backup source &mdash; no market odds available</div>
+<div class="consensus-badge">Model favors: <strong>Tenerife to win</strong> &mdash; 49.6% avg <span class="agree-tag">(all sources agree — 2 sources, no market)</span></div>
+<div class="source-row">
+<div class="source-label">Elo</div>
+<div class="bar-wrap"><div class="seg seg-home" style="width:51.4%">51%</div><div class="seg seg-draw" style="width:26.3%">26%</div><div class="seg seg-away" style="width:22.3%">22%</div></div>
+</div>
+<div class="source-row">
+<div class="source-label">Dixon-Coles</div>
+<div class="bar-wrap"><div class="seg seg-home" style="width:47.9%">48%</div><div class="seg seg-draw" style="width:29.0%">29%</div><div class="seg seg-away" style="width:23.1%">23%</div></div>
+</div>
+<div class="secondary-markets">
+<h4>Over/Under 2.5 Goals</h4>
+<div class="two-bar"><div class="seg seg-over" style="width:38.5%">O 38%</div><div class="seg seg-under" style="width:61.5%">U 62%</div></div>
+<div class="bar-label">Model only</div>
+<h4>Both Teams to Score</h4>
+<div class="two-bar"><div class="seg seg-yes" style="width:43.7%">Yes 44%</div><div class="seg seg-no" style="width:56.3%">No 56%</div></div>
+<div class="bar-label">Model only &mdash; no BTTS odds in data source</div>
+<h4>Most Likely Scores</h4>
+<div class="score-list">
+<div class="score-chip">1-0 <span class="pct">14.1%</span></div>
+<div class="score-chip">1-1 <span class="pct">13.3%</span></div>
+<div class="score-chip">0-0 <span class="pct">11.4%</span></div>
+<div class="score-chip">2-0 <span class="pct">10.0%</span></div>
+<div class="score-chip">2-1 <span class="pct">8.7%</span></div>
+</div>
+</div>
+</div>
+</div>
+<div class="match-card">
+<div class="match-summary" onclick="toggleCard(this)">
+<div class="match-teams">Celta Fortuna v Sabadell<span class="backup-tag">NO ODDS</span></div>
+<div class="match-pick"><strong>44%</strong> Celta Fortuna to win</div>
+<div class="match-time">16:30</div>
+<div class="expand-icon">&#9660;</div>
+</div>
+<div class="match-detail">
+<div class="demo-banner" style="margin-bottom:8px;font-size:0.8rem">Schedule from backup source &mdash; no market odds available</div>
+<div class="consensus-badge">Model favors: <strong>Celta Fortuna to win</strong> &mdash; 44.4% avg <span class="agree-tag">(all sources agree — 1 sources, no market)</span></div>
+<div class="source-row">
+<div class="source-label">Elo</div>
+<div class="bar-wrap"><div class="seg seg-home" style="width:44.4%">44%</div><div class="seg seg-draw" style="width:27.5%">28%</div><div class="seg seg-away" style="width:28.1%">28%</div></div>
+</div>
+<div class="source-row">
+<div class="source-label">Dixon-Coles</div>
+<div class="bar-wrap"></div>
+</div>
+</div>
+</div>
+</div>
+</div>
+<div class="date-group" id="day-2026-09-27">
+<div class="league-section">
+<div class="league-hdr">Segunda Division</div>
+<div class="match-card">
+<div class="match-summary" onclick="toggleCard(this)">
+<div class="match-teams">Eibar v Las Palmas<span class="backup-tag">NO ODDS</span></div>
+<div class="match-pick"><strong>46%</strong> Eibar to win</div>
+<div class="match-time">16:30</div>
+<div class="expand-icon">&#9660;</div>
+</div>
+<div class="match-detail">
+<div class="demo-banner" style="margin-bottom:8px;font-size:0.8rem">Schedule from backup source &mdash; no market odds available</div>
+<div class="consensus-badge">Model favors: <strong>Eibar to win</strong> &mdash; 46.0% avg <span class="agree-tag">(all sources agree — 2 sources, no market)</span></div>
+<div class="source-row">
+<div class="source-label">Elo</div>
+<div class="bar-wrap"><div class="seg seg-home" style="width:45.8%">46%</div><div class="seg seg-draw" style="width:27.3%">27%</div><div class="seg seg-away" style="width:26.9%">27%</div></div>
+</div>
+<div class="source-row">
+<div class="source-label">Dixon-Coles</div>
+<div class="bar-wrap"><div class="seg seg-home" style="width:46.3%">46%</div><div class="seg seg-draw" style="width:30.0%">30%</div><div class="seg seg-away" style="width:23.8%">24%</div></div>
+</div>
+<div class="secondary-markets">
+<h4>Over/Under 2.5 Goals</h4>
+<div class="two-bar"><div class="seg seg-over" style="width:36.1%">O 36%</div><div class="seg seg-under" style="width:63.9%">U 64%</div></div>
+<div class="bar-label">Model only</div>
+<h4>Both Teams to Score</h4>
+<div class="two-bar"><div class="seg seg-yes" style="width:42.1%">Yes 42%</div><div class="seg seg-no" style="width:57.9%">No 58%</div></div>
+<div class="bar-label">Model only &mdash; no BTTS odds in data source</div>
+<h4>Most Likely Scores</h4>
+<div class="score-list">
+<div class="score-chip">1-0 <span class="pct">14.6%</span></div>
+<div class="score-chip">1-1 <span class="pct">13.5%</span></div>
+<div class="score-chip">0-0 <span class="pct">12.4%</span></div>
+<div class="score-chip">2-0 <span class="pct">9.8%</span></div>
+<div class="score-chip">0-1 <span class="pct">9.3%</span></div>
+</div>
+</div>
+</div>
+</div>
+<div class="match-card">
+<div class="match-summary" onclick="toggleCard(this)">
+<div class="match-teams">Oviedo v Sp Gijon<span class="backup-tag">NO ODDS</span></div>
+<div class="match-pick"><strong>42%</strong> Oviedo to win</div>
+<div class="match-time">19:00</div>
+<div class="expand-icon">&#9660;</div>
+</div>
+<div class="match-detail">
+<div class="demo-banner" style="margin-bottom:8px;font-size:0.8rem">Schedule from backup source &mdash; no market odds available</div>
+<div class="consensus-badge">Model favors: <strong>Oviedo to win</strong> &mdash; 41.9% avg <span class="agree-tag">(all sources agree — 2 sources, no market)</span></div>
+<div class="source-row">
+<div class="source-label">Elo</div>
+<div class="bar-wrap"><div class="seg seg-home" style="width:45.0%">45%</div><div class="seg seg-draw" style="width:27.4%">27%</div><div class="seg seg-away" style="width:27.6%">28%</div></div>
+</div>
+<div class="source-row">
+<div class="source-label">Dixon-Coles</div>
+<div class="bar-wrap"><div class="seg seg-home" style="width:38.8%">39%</div><div class="seg seg-draw" style="width:32.3%">32%</div><div class="seg seg-away" style="width:28.9%">29%</div></div>
+</div>
+<div class="secondary-markets">
+<h4>Over/Under 2.5 Goals</h4>
+<div class="two-bar"><div class="seg seg-over" style="width:31.7%">O 32%</div><div class="seg seg-under" style="width:68.3%">U 68%</div></div>
+<div class="bar-label">Model only</div>
+<h4>Both Teams to Score</h4>
+<div class="two-bar"><div class="seg seg-yes" style="width:39.7%">Yes 40%</div><div class="seg seg-no" style="width:60.3%">No 60%</div></div>
+<div class="bar-label">Model only &mdash; no BTTS odds in data source</div>
+<h4>Most Likely Scores</h4>
+<div class="score-list">
+<div class="score-chip">0-0 <span class="pct">14.6%</span></div>
+<div class="score-chip">1-0 <span class="pct">14.3%</span></div>
+<div class="score-chip">1-1 <span class="pct">14.1%</span></div>
+<div class="score-chip">0-1 <span class="pct">11.7%</span></div>
+<div class="score-chip">2-0 <span class="pct">8.1%</span></div>
+</div>
+</div>
+</div>
+</div>
+<div class="match-card">
+<div class="match-summary" onclick="toggleCard(this)">
+<div class="match-teams">Valladolid v Córdoba<span class="backup-tag">NO ODDS</span></div>
+<div class="match-pick"><strong>45%</strong> Córdoba to win</div>
+<div class="match-time">12:00</div>
+<div class="expand-icon">&#9660;</div>
+</div>
+<div class="match-detail">
+<div class="demo-banner" style="margin-bottom:8px;font-size:0.8rem">Schedule from backup source &mdash; no market odds available</div>
+<div class="consensus-badge">Model favors: <strong>Córdoba to win</strong> &mdash; 45.1% avg <span class="agree-tag">(all sources agree — 1 sources, no market)</span></div>
+<div class="source-row">
+<div class="source-label">Elo</div>
+<div class="bar-wrap"><div class="seg seg-home" style="width:27.4%">27%</div><div class="seg seg-draw" style="width:27.5%">28%</div><div class="seg seg-away" style="width:45.1%">45%</div></div>
+</div>
+<div class="source-row">
+<div class="source-label">Dixon-Coles</div>
+<div class="bar-wrap"></div>
+</div>
+</div>
+</div>
+</div>
+</div>
+<div class="date-group" id="day-2026-09-28">
+<div class="league-section">
+<div class="league-hdr">Segunda Division</div>
+<div class="match-card">
+<div class="match-summary" onclick="toggleCard(this)">
+<div class="match-teams">Leganés v Castellon<span class="backup-tag">NO ODDS</span></div>
+<div class="match-pick"><strong>39%</strong> Castellon to win</div>
+<div class="match-time">18:30</div>
+<div class="expand-icon">&#9660;</div>
+</div>
+<div class="match-detail">
+<div class="demo-banner" style="margin-bottom:8px;font-size:0.8rem">Schedule from backup source &mdash; no market odds available</div>
+<div class="consensus-badge">Model favors: <strong>Castellon to win</strong> &mdash; 38.8% avg <span class="agree-tag">(all sources agree — 1 sources, no market)</span></div>
+<div class="source-row">
+<div class="source-label">Elo</div>
+<div class="bar-wrap"><div class="seg seg-home" style="width:33.2%">33%</div><div class="seg seg-draw" style="width:28.0%">28%</div><div class="seg seg-away" style="width:38.8%">39%</div></div>
+</div>
+<div class="source-row">
+<div class="source-label">Dixon-Coles</div>
+<div class="bar-wrap"></div>
+</div>
+</div>
+</div>
+</div>
+</div>
+<div class="footer">
+<p>Probabilities are model estimates, not recommendations. Highest probability = most likely outcome, not necessarily value against the bookmaker's price.</p>
+</div>
+<script>function switchTab(dateKey) {
+  document.querySelectorAll('.date-tab').forEach(t => t.classList.toggle('active', t.dataset.date === dateKey));
+  document.querySelectorAll('.date-group').forEach(g => g.classList.toggle('active', g.id === 'day-' + dateKey));
+  // Update top picks visibility
+  document.querySelectorAll('.top-pick-item').forEach(li => {
+    li.style.display = (!li.dataset.date || li.dataset.date === dateKey) ? '' : 'none';
+  });
+  // Re-number visible picks
+  let n = 0;
+  document.querySelectorAll('.top-pick-item').forEach(li => {
+    if (li.style.display !== 'none') { n++; li.setAttribute('value', n); }
+  });
+}
+function toggleCard(el) {
+  el.closest('.match-card').classList.toggle('open');
+}
+document.addEventListener('DOMContentLoaded', function() {
+  var first = document.querySelector('.date-tab');
+  if (first) switchTab(first.dataset.date);
+});
+</script>
+</body>
+</html>
