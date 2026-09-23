@@ -15,7 +15,7 @@ secondary_leagues:
 
 seasons:
   start: 2018
-  end: 2026
+  end: 2027
 
 data:
   raw_dir: data/raw
